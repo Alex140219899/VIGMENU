@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("4.0.4")
+script_version("4.0.5")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "4.0.4"
+local SCRIPT_VERSION_TEXT = "4.0.5"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -502,7 +502,11 @@ local function download_url_to_file_sync(dest, url, timeout_sec)
 				.. " с), колбэк не завершился: "
 				.. tostring(url)
 		)
-		pcall(sampAddChatMessageUtf8, "{009EFF}[gwarnn]{ffffff} Таймаут загрузки (сеть / GitHub). См. консоль MoonLoader.", message_color)
+		pcall(
+			sampAddChatMessageUtf8,
+			"{009EFF}[gwarnn]{ffffff} Таймаут загрузки. С raw GitHub из игры часто так (сеть/регион). Скрипт пробует зеркало jsDelivr — обновите VigMenu.lua. Или положите VigArticles.json вручную в moonloader/VigMenu/",
+			message_color
+		)
 		pcall(os.remove, dest)
 		return false
 	end
@@ -529,7 +533,7 @@ local function fetch_update_manifest()
 	if doesFileExist(tmp) then
 		pcall(os.remove, tmp)
 	end
-	--- Сначала «чистый» URL: часть WinInet/прокси ломает запрос с ?t=…
+	--- Сначала jsDelivr: raw.githubusercontent.com из части сетей (в т.ч. РФ) часто не отдаёт файл из игры; затем GitHub.
 	local function url_with_bust(base)
 		base = tostring(base or "")
 		if base == "" then
@@ -540,6 +544,8 @@ local function fetch_update_manifest()
 	end
 	local raw_urls = {}
 	local u = UPDATE_MANIFEST_URL
+	raw_urls[#raw_urls + 1] = UPDATE_MANIFEST_URL_JS
+	raw_urls[#raw_urls + 1] = url_with_bust(UPDATE_MANIFEST_URL_JS)
 	raw_urls[#raw_urls + 1] = u
 	raw_urls[#raw_urls + 1] = url_with_bust(u)
 	if u:find("/main/", 1, true) then
@@ -551,8 +557,6 @@ local function fetch_update_manifest()
 		raw_urls[#raw_urls + 1] = m
 		raw_urls[#raw_urls + 1] = url_with_bust(m)
 	end
-	raw_urls[#raw_urls + 1] = UPDATE_MANIFEST_URL_JS
-	raw_urls[#raw_urls + 1] = url_with_bust(UPDATE_MANIFEST_URL_JS)
 	local urls = vig_urls_dedupe(raw_urls)
 	local last_err = "не удалось скачать манифест (GitHub и зеркало)"
 	for _, manifest_url in ipairs(urls) do
@@ -673,7 +677,7 @@ local function start_download_script_thread()
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
 		end
-		local script_urls = vig_urls_dedupe({ url, UPDATE_SCRIPT_URL_JS })
+		local script_urls = vig_urls_dedupe({ UPDATE_SCRIPT_URL_JS, url })
 		local dl_ok = false
 		for _, su in ipairs(script_urls) do
 			if doesFileExist(tmp) then
@@ -782,7 +786,7 @@ local function vig_run_github_update_from_settings(opts)
 				if doesFileExist(tmp) then
 					pcall(os.remove, tmp)
 				end
-				local au_list = vig_urls_dedupe({ url, VIGARTICLES_URL_JS })
+				local au_list = vig_urls_dedupe({ VIGARTICLES_URL_JS, url })
 				local dl_ok = false
 				for _, au in ipairs(au_list) do
 					if doesFileExist(tmp) then

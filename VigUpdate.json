@@ -1,8 +1,8 @@
 {
-  "current_version": "4.0.4",
-  "update_info": "Текст из VigUpdate.json.",
+  "current_version": "4.0.5",
+  "update_info": "Обновил статьи",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
-  "articles_version": "7",
-  "articles_info": "Текст про статьи VigArticles.json.",
+  "articles_version": "8",
+  "articles_info": "Обновил статьи",
   "articles_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigArticles.json"
 }
