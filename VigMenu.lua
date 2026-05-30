@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("4.0.10")
+script_version("4.0.11")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "4.0.10"
+local SCRIPT_VERSION_TEXT = "4.0.11"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -394,6 +394,39 @@ local function vig_version_trim(s)
 	return s
 end
 
+--- Разбор "4.0.10" → {4,0,10}. Сравнение: -1 если a<b, 0 если равны, 1 если a>b.
+local function vig_parse_version_parts(s)
+	local parts = {}
+	for num in tostring(s or ""):gmatch("(%d+)") do
+		parts[#parts + 1] = tonumber(num) or 0
+	end
+	if #parts == 0 then
+		parts[1] = 0
+	end
+	return parts
+end
+
+local function vig_compare_versions(a, b)
+	local pa = vig_parse_version_parts(a)
+	local pb = vig_parse_version_parts(b)
+	local n = math.max(#pa, #pb)
+	for i = 1, n do
+		local va = pa[i] or 0
+		local vb = pb[i] or 0
+		if va < vb then
+			return -1
+		end
+		if va > vb then
+			return 1
+		end
+	end
+	return 0
+end
+
+local function vig_version_to_int(s)
+	return tonumber(tostring(s or ""):match("^%s*(%d+)")) or 0
+end
+
 local function get_local_script_version()
 	local p = thisScript and thisScript().path
 	local from_disk = p and vig_read_script_version_from_path(p)
@@ -580,19 +613,23 @@ local function manifest_script_needs_update(m)
 	if rem == "" then
 		return false
 	end
-	return rem ~= vig_version_trim(get_local_script_version())
+	local local_v = vig_version_trim(get_local_script_version())
+	return vig_compare_versions(rem, local_v) > 0
 end
 
 local function manifest_articles_needs_update(m)
 	if not m or m.articles_version == nil then
 		return false
 	end
-	local remote = tostring(m.articles_version)
+	local remote_n = vig_version_to_int(m.articles_version)
+	if remote_n <= 0 then
+		return false
+	end
 	local local_v = read_local_articles_version()
 	if local_v == "" then
-		return remote ~= ""
+		return true
 	end
-	return remote ~= local_v
+	return remote_n > vig_version_to_int(local_v)
 end
 
 local UpdateUi = {
@@ -698,6 +735,36 @@ local function start_download_script_thread()
 		local body = f:read("*a")
 		f:close()
 		local new_ver = (body or ""):match("script_version%s*%(%s*[\"']([^\"']+)[\"']%s*%)")
+		local local_v = vig_version_trim(get_local_script_version())
+		local manifest_v = vig_version_trim(UpdateUi.remote_script_ver)
+		if new_ver and new_ver ~= "" then
+			if vig_compare_versions(new_ver, local_v) <= 0 then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Скачанный VigMenu.lua v."
+						.. new_ver
+						.. " не новее вашей v."
+						.. local_v
+						.. " (кэш CDN или старый GitHub). Файл не перезаписан.",
+					message_color
+				)
+				pcall(os.remove, tmp)
+				UpdateUi.busy = false
+				return
+			end
+			if manifest_v ~= "" and vig_compare_versions(new_ver, manifest_v) < 0 then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Скачанный файл v."
+						.. new_ver
+						.. " старее манифеста v."
+						.. manifest_v
+						.. ". Пропуск обновления.",
+					message_color
+				)
+				pcall(os.remove, tmp)
+				UpdateUi.busy = false
+				return
+			end
+		end
 		local target = tostring(sp)
 		local out = io.open(target, "wb") or io.open(target:gsub("/", "\\"), "wb")
 		if not out then
@@ -758,14 +825,25 @@ local function vig_run_github_update_from_settings(opts)
 			if not opts.auto then
 				local loc = vig_version_trim(get_local_script_version())
 				local rem = vig_version_trim(m.current_version or "")
-				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
-						.. loc
-						.. " | в VigUpdate.json: "
-						.. rem
-						.. ".",
-					message_color
-				)
+				if vig_compare_versions(loc, rem) > 0 then
+					sampAddChatMessageUtf8(
+						"{009EFF}[gwarnn]{ffffff} У вас новее: v."
+							.. loc
+							.. " | в VigUpdate.json: v."
+							.. rem
+							.. " (кэш CDN или не запушен GitHub). Обновление не требуется.",
+						message_color
+					)
+				else
+					sampAddChatMessageUtf8(
+						"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
+							.. loc
+							.. " | в VigUpdate.json: "
+							.. rem
+							.. ".",
+						message_color
+					)
+				end
 			end
 			UpdateUi.busy = false
 			return
@@ -1686,7 +1764,8 @@ local function start_reregister_and_hooks_loop()
 end
 
 function welcome_gwarn_message()
-	local ver_show = vig_read_script_version_from_path(thisScript and thisScript().path) or SCRIPT_VERSION_TEXT
+	local sp = thisScript and thisScript().path or "?"
+	local ver_show = vig_read_script_version_from_path(sp) or SCRIPT_VERSION_TEXT
 	sampAddChatMessageUtf8(
 		"{009EFF}[gwarnn]{ffffff} Создатель AlexBuhoi | версия "
 			.. ver_show
@@ -1694,6 +1773,7 @@ function welcome_gwarn_message()
 		message_color
 	)
 	print("[gwarnn] AlexBuhoi | версия " .. ver_show .. " (файл) / константа " .. SCRIPT_VERSION_TEXT)
+	print("[gwarnn] путь скрипта: " .. tostring(sp))
 	print("[gwarnn] папка данных: " .. get_spec_data_dir())
 	print("[gwarnn] VigArticles.json: " .. SPEC_JSON_PATH)
 	print("[gwarnn] манифест обновлений: " .. UPDATE_MANIFEST_URL)
