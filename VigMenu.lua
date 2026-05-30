@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("5.0.0")
+script_version("5.0.1")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.0.0"
+local SCRIPT_VERSION_TEXT = "5.0.1"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -542,9 +542,17 @@ local function vig_url_with_cache_bust(base)
 	return base .. sep .. "t=" .. tostring(os.time())
 end
 
---- jsDelivr кэширует файлы: сначала URL с версией/временем, затем «чистый» GitHub.
+--- jsDelivr кэширует файлы: сначала raw GitHub с cache-bust, затем зеркало.
 local function vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
 	local raw = {}
+	if manifest_url and manifest_url ~= "" then
+		if version_tag and version_tag ~= "" then
+			local sep = manifest_url:find("?", 1, true) and "&" or "?"
+			raw[#raw + 1] = manifest_url .. sep .. "v=" .. tostring(version_tag)
+		end
+		raw[#raw + 1] = vig_url_with_cache_bust(manifest_url)
+		raw[#raw + 1] = manifest_url
+	end
 	if jsdelivr_static and jsdelivr_static ~= "" then
 		if version_tag and version_tag ~= "" then
 			local sep = jsdelivr_static:find("?", 1, true) and "&" or "?"
@@ -553,36 +561,34 @@ local function vig_build_download_urls(jsdelivr_static, manifest_url, version_ta
 		raw[#raw + 1] = vig_url_with_cache_bust(jsdelivr_static)
 		raw[#raw + 1] = jsdelivr_static
 	end
-	if manifest_url and manifest_url ~= "" then
-		raw[#raw + 1] = vig_url_with_cache_bust(manifest_url)
-		raw[#raw + 1] = manifest_url
-	end
 	return vig_urls_dedupe(raw)
 end
 
+--- jsDelivr кэширует @main надолго — сначала raw GitHub с cache-bust, затем зеркало. Берём манифест с максимальной версией.
 local function fetch_update_manifest()
 	local tmp = (worked_dir .. "/.gwarnn_manifest_tmp.json"):gsub("\\", "/")
 	if doesFileExist(tmp) then
 		pcall(os.remove, tmp)
 	end
-	--- Сначала jsDelivr: raw.githubusercontent.com из части сетей (в т.ч. РФ) часто не отдаёт файл из игры; затем GitHub.
 	local raw_urls = {}
 	local u = UPDATE_MANIFEST_URL
-	raw_urls[#raw_urls + 1] = UPDATE_MANIFEST_URL_JS
-	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(UPDATE_MANIFEST_URL_JS)
-	raw_urls[#raw_urls + 1] = u
+	--- Свежий GitHub первым (после push актуальнее jsDelivr).
 	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(u)
+	raw_urls[#raw_urls + 1] = u
+	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(UPDATE_MANIFEST_URL_JS)
+	raw_urls[#raw_urls + 1] = UPDATE_MANIFEST_URL_JS
 	if u:find("/main/", 1, true) then
 		local m = u:gsub("/main/", "/master/", 1)
-		raw_urls[#raw_urls + 1] = m
 		raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(m)
+		raw_urls[#raw_urls + 1] = m
 	elseif u:find("/master/", 1, true) then
 		local m = u:gsub("/master/", "/main/", 1)
-		raw_urls[#raw_urls + 1] = m
 		raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(m)
+		raw_urls[#raw_urls + 1] = m
 	end
 	local urls = vig_urls_dedupe(raw_urls)
 	local last_err = "не удалось скачать манифест (GitHub и зеркало)"
+	local best_data, best_src = nil, nil
 	for _, manifest_url in ipairs(urls) do
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
@@ -595,12 +601,44 @@ local function fetch_update_manifest()
 				pcall(os.remove, tmp)
 				local data = decode_json_str(txt)
 				if type(data) == "table" and data.current_version ~= nil and tostring(data.current_version) ~= "" then
-					last_manifest_cache = data
-					return data, nil
+					local ver = vig_version_trim(data.current_version)
+					local pick = false
+					if not best_data then
+						pick = true
+					else
+						local cmp = vig_compare_versions(ver, vig_version_trim(best_data.current_version))
+						if cmp > 0 then
+							pick = true
+						elseif cmp == 0 then
+							local art_new = vig_version_to_int(data.articles_version)
+							local art_best = vig_version_to_int(best_data.articles_version)
+							if art_new > art_best then
+								pick = true
+							end
+						end
+					end
+					if pick then
+						best_data = data
+						best_src = manifest_url
+					end
+					print("[gwarnn] VigUpdate.json v." .. ver .. " ← " .. tostring(manifest_url))
+				else
+					last_err = "в манифесте нет current_version"
 				end
-				last_err = "в манифесте нет current_version"
 			end
 		end
+	end
+	if best_data then
+		last_manifest_cache = best_data
+		print(
+			"[gwarnn] выбран манифест v."
+				.. vig_version_trim(best_data.current_version)
+				.. " (статьи "
+				.. tostring(best_data.articles_version or "?")
+				.. ") ← "
+				.. tostring(best_src)
+		)
+		return best_data, nil
 	end
 	return nil, last_err
 end
@@ -950,14 +988,25 @@ local function vig_check_updates_chat_only()
 		local loc = vig_version_trim(get_local_script_version())
 		local rem = vig_version_trim(m.current_version or "")
 		if not UpdateUi.need_script and not UpdateUi.need_articles then
-			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Обновлений нет. Скрипт у вас: "
-					.. loc
-					.. " | в манифесте: "
-					.. rem
-					.. ".",
-				message_color
-			)
+			if vig_compare_versions(loc, rem) > 0 then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} CDN/GitHub отдал старый VigUpdate.json (v."
+						.. rem
+						.. "). У вас v."
+						.. loc
+						.. ". Если на GitHub уже новее — подождите 5–10 мин или замените .lua вручную.",
+					message_color
+				)
+			else
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Обновлений нет. Скрипт у вас: "
+						.. loc
+						.. " | в манифесте: "
+						.. rem
+						.. ".",
+					message_color
+				)
+			end
 			UpdateUi.busy = false
 			return
 		end
