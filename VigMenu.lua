@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("5.0.3")
+script_version("5.0.4")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.0.3"
+local SCRIPT_VERSION_TEXT = "5.0.4"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -851,51 +851,29 @@ local function vig_run_github_update_from_settings(opts)
 			UpdateUi.need_articles = true
 		end
 		if not UpdateUi.need_script and not UpdateUi.need_articles then
-			if not opts.auto then
-				local loc = vig_version_trim(get_local_script_version())
-				local rem = vig_version_trim(m.current_version or "")
-				if vig_compare_versions(loc, rem) > 0 then
-					sampAddChatMessageUtf8(
-						"{009EFF}[gwarnn]{ffffff} У вас новее: v."
-							.. loc
-							.. " | в VigUpdate.json: v."
-							.. rem
-							.. " (кэш CDN или не запушен GitHub). Обновление не требуется.",
-						message_color
-					)
-				else
-					sampAddChatMessageUtf8(
-						"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
-							.. loc
-							.. " | в VigUpdate.json: "
-							.. rem
-							.. ".",
-						message_color
-					)
-				end
+			local loc = vig_version_trim(get_local_script_version())
+			local rem = vig_version_trim(m.current_version or "")
+			if vig_compare_versions(loc, rem) > 0 then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} У вас новее: v."
+						.. loc
+						.. " | в VigUpdate.json: v."
+						.. rem
+						.. " (кэш CDN или не запушен GitHub). Обновление не требуется.",
+					message_color
+				)
+			else
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
+						.. loc
+						.. " | в VigUpdate.json: "
+						.. rem
+						.. ".",
+					message_color
+				)
 			end
 			UpdateUi.busy = false
 			return
-		end
-		if opts.auto then
-			if UpdateUi.need_script and UpdateUi.need_articles then
-				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Автообновление: скачиваю статьи и скрипт с GitHub…",
-					message_color
-				)
-			elseif UpdateUi.need_script then
-				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Автообновление: скачиваю VigMenu.lua v."
-						.. UpdateUi.remote_script_ver
-						.. "…",
-					message_color
-				)
-			elseif UpdateUi.need_articles then
-				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Автообновление: скачиваю VigArticles.json…",
-					message_color
-				)
-			end
 		end
 		if UpdateUi.need_articles then
 			local url = UpdateUi.articles_url
@@ -1027,8 +1005,8 @@ local function vig_check_updates_chat_only()
 	end)
 end
 
---- После приветствия — автоматически скачать статьи и/или скрипт, если в VigUpdate.json версия новее или статей нет.
-local function vig_auto_update_on_startup()
+--- После приветствия — только сообщение в чат, если есть обновление (скачивание по кнопке в настройках).
+local function vig_delayed_update_hint_after_welcome()
 	if not lua_thread or not lua_thread.create then
 		return
 	end
@@ -1037,8 +1015,37 @@ local function vig_auto_update_on_startup()
 		if UpdateUi.busy then
 			return
 		end
-		local force_articles = (#articles_data == 0)
-		vig_run_github_update_from_settings({ auto = true, force_articles = force_articles })
+		local m, err = fetch_update_manifest()
+		if not m then
+			return
+		end
+		apply_updates_from_manifest(m)
+		if not UpdateUi.need_script and not UpdateUi.need_articles then
+			return
+		end
+		local loc = vig_version_trim(get_local_script_version())
+		local rem = vig_version_trim(m.current_version or "")
+		if UpdateUi.need_script then
+			sampAddChatMessageUtf8(
+				"{009EFF}[gwarnn]{ffffff} Доступно обновление скрипта (у вас v."
+					.. loc
+					.. ", на GitHub v."
+					.. rem
+					.. "). Настройки → «Проверить» / «Обновить с GitHub».",
+				message_color
+			)
+			if type(m.update_info) == "string" and vig_version_trim(m.update_info) ~= "" then
+				sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.update_info, message_color)
+			end
+		elseif UpdateUi.need_articles then
+			sampAddChatMessageUtf8(
+				"{009EFF}[gwarnn]{ffffff} Доступно обновление статей VigArticles.json. Настройки → «Обновить с GitHub».",
+				message_color
+			)
+		end
+		if UpdateUi.need_articles and type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
+			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.articles_info, message_color)
+		end
 	end)
 end
 
@@ -1860,7 +1867,7 @@ function main()
 	end
 
 	welcome_gwarn_message()
-	vig_auto_update_on_startup()
+	vig_delayed_update_hint_after_welcome()
 
 	while true do
 		wait(0)
