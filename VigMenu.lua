@@ -2,7 +2,7 @@
 --[[
   Данные (VigArticles.json, VigGwarnBinder.json, версия статей) в moonloader/VigMenu/
   (создаётся при первом запуске). Обновление .lua с GitHub не затирает эту папку.
-  При первом запуске JSON копируются из старых путей (в т.ч. SpecRosysk/, старые имена файлов).
+  VigArticles.json только с GitHub (старые копии из moonloader не подхватываются).
   /gwarnn [id] or /gw [id] opens menu; gear: RP chain (VigGwarnBinder.json) then /gwarn. Optional hotkey (mimgui_hotkeys JSON) opens chat with /gwarnn .
   Diagnose: MoonLoader console shows [gwarnn] main() OK. If STOP, install sampfuncs. If no lines, script crashed on require.
   Uses sampRegisterChatCommand + samp.events onSendCommand only (onSendChat removed � Arizona conflict).
@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("4.0.9")
+script_version("4.0.10")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "4.0.9"
+local SCRIPT_VERSION_TEXT = "4.0.10"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -221,40 +221,12 @@ local function spec_copy_file(src, dst)
 	return true
 end
 
---- Один раз при загрузке: перенос из старых путей в VigMenu/ (если целевого файла ещё нет).
+--- Один раз при загрузке: перенос только VigGwarnBinder.json из старых путей (статьи — только с GitHub).
 local function migrate_legacy_spec_files()
 	ensure_spec_data_dir()
 	local data_dir = get_spec_data_dir()
-	local data_articles = data_dir .. "/VigArticles.json"
 	local data_binder = data_dir .. "/VigGwarnBinder.json"
 	local old_data = worked_dir .. "/SpecRosysk"
-	if not doesFileExist(data_articles) then
-		local candidates = {}
-		pcall(function()
-			local path = thisScript().path
-			if path and path ~= "" then
-				local dir = path:gsub("\\", "/"):match("^(.*)/[^/]+$") or worked_dir
-				candidates[#candidates + 1] = dir .. "/VigArticles.json"
-				candidates[#candidates + 1] = dir .. "/SpecArticles.json"
-			end
-		end)
-		candidates[#candidates + 1] = worked_dir .. "/VigArticles.json"
-		candidates[#candidates + 1] = worked_dir .. "/SpecArticles.json"
-		candidates[#candidates + 1] = worked_dir .. "/Arizona Helper/SpecArticles.json"
-		candidates[#candidates + 1] = old_data .. "/SpecArticles.json"
-		for _, p in ipairs(candidates) do
-			if doesFileExist(p) then
-				if spec_copy_file(p, data_articles) then
-					print("[gwarnn] перенесён VigArticles.json → " .. data_articles)
-					local oldv = p .. ".articles_ver"
-					if doesFileExist(oldv) then
-						spec_copy_file(oldv, data_articles .. ".articles_ver")
-					end
-				end
-				break
-			end
-		end
-	end
 	if not doesFileExist(data_binder) then
 		local candidates = {}
 		pcall(function()
@@ -528,34 +500,53 @@ local function vig_urls_dedupe(urls)
 	return out
 end
 
+local function vig_url_with_cache_bust(base)
+	base = tostring(base or "")
+	if base == "" then
+		return base
+	end
+	local sep = base:find("?", 1, true) and "&" or "?"
+	return base .. sep .. "t=" .. tostring(os.time())
+end
+
+--- jsDelivr кэширует файлы: сначала URL с версией/временем, затем «чистый» GitHub.
+local function vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
+	local raw = {}
+	if jsdelivr_static and jsdelivr_static ~= "" then
+		if version_tag and version_tag ~= "" then
+			local sep = jsdelivr_static:find("?", 1, true) and "&" or "?"
+			raw[#raw + 1] = jsdelivr_static .. sep .. "v=" .. tostring(version_tag)
+		end
+		raw[#raw + 1] = vig_url_with_cache_bust(jsdelivr_static)
+		raw[#raw + 1] = jsdelivr_static
+	end
+	if manifest_url and manifest_url ~= "" then
+		raw[#raw + 1] = vig_url_with_cache_bust(manifest_url)
+		raw[#raw + 1] = manifest_url
+	end
+	return vig_urls_dedupe(raw)
+end
+
 local function fetch_update_manifest()
 	local tmp = (worked_dir .. "/.gwarnn_manifest_tmp.json"):gsub("\\", "/")
 	if doesFileExist(tmp) then
 		pcall(os.remove, tmp)
 	end
 	--- Сначала jsDelivr: raw.githubusercontent.com из части сетей (в т.ч. РФ) часто не отдаёт файл из игры; затем GitHub.
-	local function url_with_bust(base)
-		base = tostring(base or "")
-		if base == "" then
-			return base
-		end
-		local sep = base:find("?", 1, true) and "&" or "?"
-		return base .. sep .. "t=" .. tostring(os.time())
-	end
 	local raw_urls = {}
 	local u = UPDATE_MANIFEST_URL
 	raw_urls[#raw_urls + 1] = UPDATE_MANIFEST_URL_JS
-	raw_urls[#raw_urls + 1] = url_with_bust(UPDATE_MANIFEST_URL_JS)
+	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(UPDATE_MANIFEST_URL_JS)
 	raw_urls[#raw_urls + 1] = u
-	raw_urls[#raw_urls + 1] = url_with_bust(u)
+	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(u)
 	if u:find("/main/", 1, true) then
 		local m = u:gsub("/main/", "/master/", 1)
 		raw_urls[#raw_urls + 1] = m
-		raw_urls[#raw_urls + 1] = url_with_bust(m)
+		raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(m)
 	elseif u:find("/master/", 1, true) then
 		local m = u:gsub("/master/", "/main/", 1)
 		raw_urls[#raw_urls + 1] = m
-		raw_urls[#raw_urls + 1] = url_with_bust(m)
+		raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(m)
 	end
 	local urls = vig_urls_dedupe(raw_urls)
 	local last_err = "не удалось скачать манифест (GitHub и зеркало)"
@@ -677,7 +668,7 @@ local function start_download_script_thread()
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
 		end
-		local script_urls = vig_urls_dedupe({ UPDATE_SCRIPT_URL_JS, url })
+		local script_urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, url, UpdateUi.remote_script_ver)
 		local dl_ok = false
 		for _, su in ipairs(script_urls) do
 			if doesFileExist(tmp) then
@@ -764,18 +755,40 @@ local function vig_run_github_update_from_settings(opts)
 			UpdateUi.need_articles = true
 		end
 		if not UpdateUi.need_script and not UpdateUi.need_articles then
-			local loc = vig_version_trim(get_local_script_version())
-			local rem = vig_version_trim(m.current_version or "")
-			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
-					.. loc
-					.. " | в VigUpdate.json: "
-					.. rem
-					.. ".",
-				message_color
-			)
+			if not opts.auto then
+				local loc = vig_version_trim(get_local_script_version())
+				local rem = vig_version_trim(m.current_version or "")
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
+						.. loc
+						.. " | в VigUpdate.json: "
+						.. rem
+						.. ".",
+					message_color
+				)
+			end
 			UpdateUi.busy = false
 			return
+		end
+		if opts.auto then
+			if UpdateUi.need_script and UpdateUi.need_articles then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Автообновление: скачиваю статьи и скрипт с GitHub…",
+					message_color
+				)
+			elseif UpdateUi.need_script then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Автообновление: скачиваю VigMenu.lua v."
+						.. UpdateUi.remote_script_ver
+						.. "…",
+					message_color
+				)
+			elseif UpdateUi.need_articles then
+				sampAddChatMessageUtf8(
+					"{009EFF}[gwarnn]{ffffff} Автообновление: скачиваю VigArticles.json…",
+					message_color
+				)
+			end
 		end
 		if UpdateUi.need_articles then
 			local url = UpdateUi.articles_url
@@ -786,7 +799,7 @@ local function vig_run_github_update_from_settings(opts)
 				if doesFileExist(tmp) then
 					pcall(os.remove, tmp)
 				end
-				local au_list = vig_urls_dedupe({ VIGARTICLES_URL_JS, url })
+				local au_list = vig_build_download_urls(VIGARTICLES_URL_JS, url, UpdateUi.remote_articles_ver)
 				local dl_ok = false
 				for _, au in ipairs(au_list) do
 					if doesFileExist(tmp) then
@@ -896,44 +909,18 @@ local function vig_check_updates_chat_only()
 	end)
 end
 
---- После приветствия — вторая/третья строка в чат, если на GitHub есть более новая версия.
-local function vig_delayed_update_hint_after_welcome()
+--- После приветствия — автоматически скачать статьи и/или скрипт, если в VigUpdate.json версия новее или статей нет.
+local function vig_auto_update_on_startup()
 	if not lua_thread or not lua_thread.create then
 		return
 	end
 	lua_thread.create(function()
 		wait(4500)
-		local m, err = fetch_update_manifest()
-		if not m then
+		if UpdateUi.busy then
 			return
 		end
-		apply_updates_from_manifest(m)
-		if not UpdateUi.need_script and not UpdateUi.need_articles then
-			return
-		end
-		local loc = vig_version_trim(get_local_script_version())
-		local rem = vig_version_trim(m.current_version or "")
-		if UpdateUi.need_script then
-			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Доступно обновление скрипта (у вас v."
-					.. loc
-					.. ", на GitHub v."
-					.. rem
-					.. "). Настройки → «Обновить с GitHub».",
-				message_color
-			)
-			if type(m.update_info) == "string" and vig_version_trim(m.update_info) ~= "" then
-				sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.update_info, message_color)
-			end
-		elseif UpdateUi.need_articles then
-			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Доступно обновление статей VigArticles.json. Настройки → «Обновить с GitHub».",
-				message_color
-			)
-		end
-		if UpdateUi.need_articles and type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.articles_info, message_color)
-		end
+		local force_articles = (#articles_data == 0)
+		vig_run_github_update_from_settings({ auto = true, force_articles = force_articles })
 	end)
 end
 
@@ -1753,7 +1740,7 @@ function main()
 	end
 
 	welcome_gwarn_message()
-	vig_delayed_update_hint_after_welcome()
+	vig_auto_update_on_startup()
 
 	while true do
 		wait(0)
