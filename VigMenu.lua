@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("5.0.2")
+script_version("5.0.3")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.0.2"
+local SCRIPT_VERSION_TEXT = "5.0.3"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -564,6 +564,43 @@ local function vig_build_download_urls(jsdelivr_static, manifest_url, version_ta
 	return vig_urls_dedupe(raw)
 end
 
+--- Скачивает VigMenu.lua со всех URL и берёт файл с максимальной версией (jsDelivr часто отдаёт старый кэш).
+local function vig_download_best_script(script_urls, tmp, local_v, manifest_v)
+	local best_body, best_ver, best_url = nil, nil, nil
+	for _, su in ipairs(script_urls) do
+		if doesFileExist(tmp) then
+			pcall(os.remove, tmp)
+		end
+		if download_url_to_file_sync(tmp, su, 120) then
+			local f = io.open(tmp, "rb")
+			if f then
+				local body = f:read("*a") or ""
+				f:close()
+				local ver = body:match("script_version%s*%(%s*[\"']([^\"']+)[\"']%s*%)")
+				if ver and ver ~= "" then
+					print("[gwarnn] VigMenu.lua v." .. ver .. " ← " .. tostring(su))
+					if vig_compare_versions(ver, local_v) > 0 then
+						if manifest_v == "" or vig_compare_versions(ver, manifest_v) >= 0 then
+							if not best_ver or vig_compare_versions(ver, best_ver) > 0 then
+								best_body = body
+								best_ver = ver
+								best_url = su
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	if doesFileExist(tmp) then
+		pcall(os.remove, tmp)
+	end
+	if best_ver then
+		print("[gwarnn] выбран VigMenu.lua v." .. best_ver .. " ← " .. tostring(best_url))
+	end
+	return best_body, best_ver, best_url
+end
+
 --- jsDelivr кэширует @main надолго — сначала raw GitHub с cache-bust, затем зеркало. Берём манифест с максимальной версией.
 local function fetch_update_manifest()
 	local tmp = (worked_dir .. "/.gwarnn_manifest_tmp.json"):gsub("\\", "/")
@@ -744,64 +781,18 @@ local function start_download_script_thread()
 			pcall(os.remove, tmp)
 		end
 		local script_urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, url, UpdateUi.remote_script_ver)
-		local dl_ok = false
-		for _, su in ipairs(script_urls) do
-			if doesFileExist(tmp) then
-				pcall(os.remove, tmp)
-			end
-			if download_url_to_file_sync(tmp, su, 120) then
-				dl_ok = true
-				if su ~= url then
-					print("[gwarnn] VigMenu.lua: успех с зеркала jsDelivr")
-				end
-				break
-			end
-		end
-		if not dl_ok then
+		local local_v = vig_version_trim(get_local_script_version())
+		local manifest_v = vig_version_trim(UpdateUi.remote_script_ver)
+		local body, new_ver = vig_download_best_script(script_urls, tmp, local_v, manifest_v)
+		if not body or body == "" then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Ошибка скачивания скрипта (GitHub и зеркало).",
+				"{009EFF}[gwarnn]{ffffff} Не удалось скачать VigMenu.lua v."
+					.. manifest_v
+					.. "+ (GitHub недоступен, jsDelivr отдал старый кэш). Замените .lua вручную с GitHub.",
 				message_color
 			)
 			UpdateUi.busy = false
 			return
-		end
-		local f = io.open(tmp, "rb")
-		if not f then
-			UpdateUi.busy = false
-			return
-		end
-		local body = f:read("*a")
-		f:close()
-		local new_ver = (body or ""):match("script_version%s*%(%s*[\"']([^\"']+)[\"']%s*%)")
-		local local_v = vig_version_trim(get_local_script_version())
-		local manifest_v = vig_version_trim(UpdateUi.remote_script_ver)
-		if new_ver and new_ver ~= "" then
-			if vig_compare_versions(new_ver, local_v) <= 0 then
-				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Скачанный VigMenu.lua v."
-						.. new_ver
-						.. " не новее вашей v."
-						.. local_v
-						.. " (кэш CDN или старый GitHub). Файл не перезаписан.",
-					message_color
-				)
-				pcall(os.remove, tmp)
-				UpdateUi.busy = false
-				return
-			end
-			if manifest_v ~= "" and vig_compare_versions(new_ver, manifest_v) < 0 then
-				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Скачанный файл v."
-						.. new_ver
-						.. " старее манифеста v."
-						.. manifest_v
-						.. ". Пропуск обновления.",
-					message_color
-				)
-				pcall(os.remove, tmp)
-				UpdateUi.busy = false
-				return
-			end
 		end
 		local target = tostring(sp)
 		local out = io.open(target, "wb") or io.open(target:gsub("/", "\\"), "wb")
