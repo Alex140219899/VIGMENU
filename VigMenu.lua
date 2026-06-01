@@ -1736,12 +1736,6 @@ function register_spec_imgui()
 					imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
 					imgui.InputText("##binder_delay", SpecBinderUi.buf_delay, 16)
 					imgui.Separator()
-					imgui.TextWrapped(
-						im_utf8(
-							"Отыгровка (VigGwarnBinder.json). Шаблон: VigGwarnBinderDefault.json. "
-								.. "Строки через Enter или «&». {article} {nick} {id}:"
-						)
-					)
 					imgui.InputTextMultiline(
 						"##binder_script",
 						SpecBinderUi.buf_script,
