@@ -1,6 +1,6 @@
 ---@diagnostic disable: undefined-global, lowercase-global
 --[[
-  Данные (VigArticles.json, VigGwarnBinder.json, версия статей) в moonloader/VigMenu/
+  Данные: VigArticles.json, VigGwarnBinder.json (настройки), VigGwarnBinderDefault.json (шаблон отыгровки) в moonloader/VigMenu/
   (создаётся при первом запуске). Обновление .lua с GitHub не затирает эту папку.
   VigArticles.json только с GitHub (старые копии из moonloader не подхватываются).
   /gwarnn [id] or /gw [id] opens menu; gear: RP chain (VigGwarnBinder.json) then /gwarn. Optional hotkey (mimgui_hotkeys JSON) opens chat with /gwarnn .
@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("5.0.6")
+script_version("5.0.7")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,13 +169,15 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.0.6"
+local SCRIPT_VERSION_TEXT = "5.0.7"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
 local UPDATE_MANIFEST_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigUpdate.json"
 local VIGARTICLES_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigArticles.json"
 local UPDATE_SCRIPT_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigMenu.lua"
+local BINDER_DEFAULT_JSON_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigGwarnBinderDefault.json"
+local BINDER_DEFAULT_JSON_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigGwarnBinderDefault.json"
 
 --- Постоянная папка данных внутри moonloader (не перезаписывается при обновлении .lua).
 local VIG_DATA_DIR_NAME = "VigMenu"
@@ -338,17 +340,8 @@ local SpecBinderUi = {
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
 
---- Отыгровка по умолчанию (новый VigGwarnBinder.json или пустое поле). Редактируется в настройках меню.
---- Строки через Enter или «&». Плейсхолдеры: {article} {reason} {id} {nick}
-local DEFAULT_GWARN_RP_SCRIPT = [[/do КПК находится на поясном держателе.
-/me берёт в руки свой КПК и включает его
-/me открыв базу данных ФБР переходит в раздел управление сотрудниками других организаций
-/me открывает дело нужного сотрудника и вносит в него изменения
-/do Изменения успешно сохранены.
-/me выходит с базы данных ФБР и выключив КПК убирает его на поясной держатель]]
-
 local gwarn_binder = {
-	rp_script = DEFAULT_GWARN_RP_SCRIPT,
+	rp_script = "",
 	delay_ms = 900,
 	bind_chat_open = "[]",
 }
@@ -1063,6 +1056,113 @@ local function get_spec_binder_json_path()
 	return (get_spec_data_dir() .. "/VigGwarnBinder.json"):gsub("\\", "/")
 end
 
+local function get_binder_default_json_path()
+	ensure_spec_data_dir()
+	return (get_spec_data_dir() .. "/VigGwarnBinderDefault.json"):gsub("\\", "/")
+end
+
+local function binder_default_template_candidates()
+	local candidates = {}
+	pcall(function()
+		local path = thisScript().path
+		if path and path ~= "" then
+			local dir = path:gsub("\\", "/"):match("^(.*)/[^/]+$") or worked_dir
+			candidates[#candidates + 1] = dir .. "/VigGwarnBinderDefault.json"
+		end
+	end)
+	candidates[#candidates + 1] = worked_dir .. "/VigGwarnBinderDefault.json"
+	return candidates
+end
+
+local function apply_binder_table(data)
+	if type(data) ~= "table" then
+		return false
+	end
+	if type(data.rp_script) == "string" then
+		gwarn_binder.rp_script = data.rp_script
+	end
+	if type(data.delay_ms) == "number" then
+		gwarn_binder.delay_ms = data.delay_ms
+	elseif type(data.delay_ms) == "string" then
+		gwarn_binder.delay_ms = tonumber(data.delay_ms) or 900
+	end
+	if type(data.bind_chat_open) == "string" then
+		gwarn_binder.bind_chat_open = data.bind_chat_open
+	end
+	return true
+end
+
+local function read_binder_json_file(path)
+	if not path or path == "" or not doesFileExist(path) then
+		return nil
+	end
+	local f = io.open(path, "r")
+	if not f then
+		return nil
+	end
+	local txt = f:read("*a") or ""
+	f:close()
+	local ok, data = pcall(decode_json_str, txt)
+	if ok and type(data) == "table" then
+		return data
+	end
+	return nil
+end
+
+--- Шаблон отыгровки в moonloader/VigMenu/VigGwarnBinderDefault.json (из папки скрипта или с GitHub).
+local function ensure_binder_default_template()
+	local dest = get_binder_default_json_path()
+	if doesFileExist(dest) then
+		return true
+	end
+	for _, p in ipairs(binder_default_template_candidates()) do
+		if doesFileExist(p) and spec_copy_file(p, dest) then
+			print("[gwarnn] скопирован шаблон → " .. dest)
+			return true
+		end
+	end
+	if not download_url_to_file_sync then
+		return false
+	end
+	local tmp = (worked_dir .. "/.gwarnn_binder_default_tmp.json"):gsub("\\", "/")
+	if doesFileExist(tmp) then
+		pcall(os.remove, tmp)
+	end
+	local urls = vig_build_download_urls(BINDER_DEFAULT_JSON_URL_JS, BINDER_DEFAULT_JSON_URL, "")
+	for _, u in ipairs(urls) do
+		if doesFileExist(tmp) then
+			pcall(os.remove, tmp)
+		end
+		if download_url_to_file_sync(tmp, u, 60) and doesFileExist(tmp) then
+			if spec_copy_file(tmp, dest) then
+				print("[gwarnn] скачан шаблон отыгровки → " .. dest)
+				pcall(os.remove, tmp)
+				return true
+			end
+		end
+	end
+	pcall(os.remove, tmp)
+	return false
+end
+
+--- Первый запуск: VigGwarnBinder.json из шаблона (редактируется в настройках и сохраняется отдельно).
+local function create_user_binder_from_default()
+	if not ensure_binder_default_template() then
+		print("[gwarnn] нет VigGwarnBinderDefault.json — создаётся пустой VigGwarnBinder.json")
+		gwarn_binder.rp_script = ""
+		gwarn_binder.delay_ms = 900
+		gwarn_binder.bind_chat_open = "[]"
+		return save_gwarn_binder_settings()
+	end
+	local src = get_binder_default_json_path()
+	local dst = get_spec_binder_json_path()
+	if spec_copy_file(src, dst) then
+		print("[gwarnn] создан VigGwarnBinder.json из шаблона")
+		return true
+	end
+	return false
+end
+
 local function encode_binder_json(t)
 	if dkok then
 		local ok, s = pcall(function()
@@ -1170,35 +1270,32 @@ end
 
 local function load_gwarn_binder_settings()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
-	gwarn_binder.rp_script = DEFAULT_GWARN_RP_SCRIPT
+	gwarn_binder.rp_script = ""
 	gwarn_binder.delay_ms = 900
 	gwarn_binder.bind_chat_open = "[]"
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
-		save_gwarn_binder_settings()
-		return
+		create_user_binder_from_default()
 	end
-	local f, err = io.open(SPEC_BINDER_JSON_PATH, "r")
-	if not f then
-		print("[gwarnn] не удалось прочитать VigGwarnBinder.json: " .. tostring(err))
-		return
-	end
-	local txt = f:read("*a")
-	f:close()
-	local ok, data = pcall(decode_json_str, txt)
-	if ok and type(data) == "table" then
-		if type(data.rp_script) == "string" then
-			local saved = data.rp_script:match("^%s*(.-)%s*$") or ""
-			if saved ~= "" then
-				gwarn_binder.rp_script = data.rp_script
+	local data = read_binder_json_file(SPEC_BINDER_JSON_PATH)
+	if data then
+		apply_binder_table(data)
+		local saved = tostring(gwarn_binder.rp_script or ""):match("^%s*(.-)%s*$") or ""
+		if saved == "" and ensure_binder_default_template() then
+			local tpl = read_binder_json_file(get_binder_default_json_path())
+			if tpl and type(tpl.rp_script) == "string" and tpl.rp_script:match("%S") then
+				gwarn_binder.rp_script = tpl.rp_script
+				save_gwarn_binder_settings()
 			end
 		end
-		if type(data.delay_ms) == "number" then
-			gwarn_binder.delay_ms = data.delay_ms
-		elseif type(data.delay_ms) == "string" then
-			gwarn_binder.delay_ms = tonumber(data.delay_ms) or 900
-		end
-		if type(data.bind_chat_open) == "string" then
-			gwarn_binder.bind_chat_open = data.bind_chat_open
+	else
+		if not doesFileExist(SPEC_BINDER_JSON_PATH) then
+			create_user_binder_from_default()
+			data = read_binder_json_file(SPEC_BINDER_JSON_PATH)
+			if data then
+				apply_binder_table(data)
+			end
+		else
+			print("[gwarnn] не удалось прочитать VigGwarnBinder.json")
 		end
 	end
 	try_register_gwarn_binder_hotkey()
@@ -1641,7 +1738,8 @@ function register_spec_imgui()
 					imgui.Separator()
 					imgui.TextWrapped(
 						im_utf8(
-							"Текст отыгровки (строки через Enter или «&»). {article} — статья, {nick} — ник, {id} — ID:"
+							"Отыгровка (VigGwarnBinder.json). Шаблон: VigGwarnBinderDefault.json. "
+								.. "Строки через Enter или «&». {article} {nick} {id}:"
 						)
 					)
 					imgui.InputTextMultiline(
