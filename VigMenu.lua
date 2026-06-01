@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
 script_author("AlexBuhoi")
-script_version("5.0.5")
+script_version("5.0.6")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.0.5"
+local SCRIPT_VERSION_TEXT = "5.0.6"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -338,8 +338,17 @@ local SpecBinderUi = {
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
 
+--- Отыгровка по умолчанию (новый VigGwarnBinder.json или пустое поле). Редактируется в настройках меню.
+--- Строки через Enter или «&». Плейсхолдеры: {article} {reason} {id} {nick}
+local DEFAULT_GWARN_RP_SCRIPT = [[/do КПК находится на поясном держателе.
+/me берёт в руки свой КПК и включает его
+/me открыв базу данных ФБР переходит в раздел управление сотрудниками других организаций
+/me открывает дело нужного сотрудника и вносит в него изменения
+/do Изменения успешно сохранены.
+/me выходит с базы данных ФБР и выключив КПК убирает его на поясной держатель]]
+
 local gwarn_binder = {
-	rp_script = "",
+	rp_script = DEFAULT_GWARN_RP_SCRIPT,
 	delay_ms = 900,
 	bind_chat_open = "[]",
 }
@@ -1161,7 +1170,7 @@ end
 
 local function load_gwarn_binder_settings()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
-	gwarn_binder.rp_script = ""
+	gwarn_binder.rp_script = DEFAULT_GWARN_RP_SCRIPT
 	gwarn_binder.delay_ms = 900
 	gwarn_binder.bind_chat_open = "[]"
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
@@ -1178,7 +1187,10 @@ local function load_gwarn_binder_settings()
 	local ok, data = pcall(decode_json_str, txt)
 	if ok and type(data) == "table" then
 		if type(data.rp_script) == "string" then
-			gwarn_binder.rp_script = data.rp_script
+			local saved = data.rp_script:match("^%s*(.-)%s*$") or ""
+			if saved ~= "" then
+				gwarn_binder.rp_script = data.rp_script
+			end
 		end
 		if type(data.delay_ms) == "number" then
 			gwarn_binder.delay_ms = data.delay_ms
@@ -1627,7 +1639,11 @@ function register_spec_imgui()
 					imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
 					imgui.InputText("##binder_delay", SpecBinderUi.buf_delay, 16)
 					imgui.Separator()
-					imgui.TextWrapped(im_utf8("Текст отыгровки:"))
+					imgui.TextWrapped(
+						im_utf8(
+							"Текст отыгровки (строки через Enter или «&»). {article} — статья, {nick} — ник, {id} — ID:"
+						)
+					)
 					imgui.InputTextMultiline(
 						"##binder_script",
 						SpecBinderUi.buf_script,
