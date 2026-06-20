@@ -1986,12 +1986,24 @@ function register_spec_imgui()
 									then
 										local gwarn_cmd = get_binder_server_cmd(DISCIPLINE_ACTION_GWARN)
 										local fire_cmd = get_binder_server_cmd(DISCIPLINE_ACTION_FIRE)
-										local fire_days = clamp_fire_ban_days(gwarn_binder.fire_ban_days)
+										local close_sz = 26 * custom_dpi
+										local header_y = imgui.GetCursorPosY()
 										imgui.Text(im_utf8("Информация по статье"))
-										imgui.SameLine(math.max(0, imgui.GetWindowWidth() - 42 * custom_dpi))
-										if imgui.Button(im_utf8("X##close_spec"), imgui.ImVec2(24 * custom_dpi, 24 * custom_dpi)) then
+										imgui.SetCursorPos(
+											imgui.ImVec2(
+												math.max(8 * custom_dpi, imgui.GetWindowWidth() - close_sz - 8 * custom_dpi),
+												header_y
+											)
+										)
+										if
+											imgui.Button(
+												im_utf8("X##close_spec"),
+												imgui.ImVec2(close_sz, close_sz)
+											)
+										then
 											imgui.CloseCurrentPopup()
 										end
+										imgui.SetCursorPosY(math.max(imgui.GetCursorPosY(), header_y + close_sz + 4 * custom_dpi))
 										imgui.Separator()
 										imgui.Text(
 											im_utf8("Игрок: ")
@@ -2007,59 +2019,25 @@ function register_spec_imgui()
 										)
 										imgui.TextWrapped(im_utf8(item.text))
 										imgui.Separator()
-										if imgui.CollapsingHeader(im_utf8("Спец. выговор##spec_gwarn_" .. chapter_idx .. "_" .. index)) then
-											imgui.TextWrapped(
-												im_utf8("Команда: /")
-													.. gwarn_cmd
-													.. " "
-													.. tostring(spec_target_id)
-													.. " "
-													.. im_utf8(item.reason)
-											)
-											if
-												imgui.Button(
-													im_utf8("Подтвердить /" .. gwarn_cmd .. "##spec_gwarn"),
-													imgui.ImVec2(240 * custom_dpi, 25 * custom_dpi)
-												)
-											then
-												SpecMenu.Window[0] = false
-												send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_GWARN)
-												imgui.CloseCurrentPopup()
-											end
-										end
-										if imgui.CollapsingHeader(im_utf8("Уволить##spec_fire_" .. chapter_idx .. "_" .. index)) then
-											imgui.TextWrapped(
-												im_utf8("Команда: /")
-													.. fire_cmd
-													.. " "
-													.. tostring(spec_target_id)
-													.. " "
-													.. tostring(fire_days)
-													.. " "
-													.. im_utf8(item.reason)
-											)
-											imgui.TextWrapped(
-												im_utf8("Дней запрета: ")
-													.. tostring(fire_days)
-													.. im_utf8(" (в Настр.)")
-											)
-											if
-												imgui.Button(
-													im_utf8("Подтвердить /" .. fire_cmd .. "##spec_fire"),
-													imgui.ImVec2(240 * custom_dpi, 25 * custom_dpi)
-												)
-											then
-												SpecMenu.Window[0] = false
-												send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_FIRE)
-												imgui.CloseCurrentPopup()
-											end
-										end
 										if
 											imgui.Button(
-												im_utf8("Закрыть##spec"),
-												imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
+												im_utf8("Подтвердить /" .. gwarn_cmd .. "##spec_gwarn"),
+												imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
 											)
 										then
+											SpecMenu.Window[0] = false
+											send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_GWARN)
+											imgui.CloseCurrentPopup()
+										end
+										imgui.SameLine()
+										if
+											imgui.Button(
+												im_utf8("Уволить /" .. fire_cmd .. "##spec_fire"),
+												imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
+											)
+										then
+											SpecMenu.Window[0] = false
+											send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_FIRE)
 											imgui.CloseCurrentPopup()
 										end
 										imgui.EndPopup()
