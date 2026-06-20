@@ -1,8 +1,8 @@
 {
-  "current_version": "5.0.8",
-  "update_info": "Обновил статьи",
+  "current_version": "5.1.0",
+  "update_info": "Спец. выговор и увольнение через /fbim, две отыгровки в настройках",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
-  "articles_version": "14",
-  "articles_info": "Обновил статьи",
+  "articles_version": "15",
+  "articles_info": "ЗоГС: статьи 17–42 (обновлённый закон)",
   "articles_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigArticles.json"
 }

@@ -3,15 +3,15 @@
   Данные: VigArticles.json, VigGwarnBinder.json (настройки), VigGwarnBinderDefault.json (шаблон отыгровки) в moonloader/VigMenu/
   (создаётся при первом запуске). Обновление .lua с GitHub не затирает эту папку.
   VigArticles.json только с GitHub (старые копии из moonloader не подхватываются).
-  /gwarnn [id] or /gw [id] opens menu; gear: RP chain (VigGwarnBinder.json) then /gwarn. Optional hotkey (mimgui_hotkeys JSON) opens chat with /gwarnn .
+  /gwarnn [id] or /gw [id] opens menu; gear: RP chains (VigGwarnBinder.json) then /fbim. Optional hotkey (mimgui_hotkeys JSON) opens chat with /gwarnn .
   Diagnose: MoonLoader console shows [gwarnn] main() OK. If STOP, install sampfuncs. If no lines, script crashed on require.
   Uses sampRegisterChatCommand + samp.events onSendCommand only (onSendChat removed � Arizona conflict).
 ]]
 
 script_name("Меню выговоров (Vig)")
-script_description("Меню /gwarn: /gwarnn [id] → команда /gwarn")
+script_description("Меню /fbim: /gwarnn [id] → спец. выговор или увольнение")
 script_author("AlexBuhoi")
-script_version("5.0.8")
+script_version("5.1.0")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.0.8"
+local SCRIPT_VERSION_TEXT = "5.1.0"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -270,7 +270,9 @@ local custom_dpi = 1.0
 local GWARN_MENU_CMD = "gwarnn"
 local GWARN_MENU_CMD_ALT = "gw"
 local GWARN_RELOAD_CMD = "gwarnn_reload"
-local GWARN_SERVER_CMD = "gwarn"
+local GWARN_SERVER_CMD = "fbim"
+local DISCIPLINE_ACTION_GWARN = "gwarn"
+local DISCIPLINE_ACTION_FIRE = "fire"
 local message_color = 0x009eff
 
 local commands_registered_log = false
@@ -333,18 +335,24 @@ local SpecMenu = {
 }
 
 local SpecBinderUi = {
-	buf_script = imgui.new.char[8192](),
+	buf_script_gwarn = imgui.new.char[8192](),
+	buf_script_fire = imgui.new.char[8192](),
 	buf_bind = imgui.new.char[512](),
-	buf_delay = imgui.new.char[16](),
+	buf_delay_gwarn = imgui.new.char[16](),
+	buf_delay_fire = imgui.new.char[16](),
 }
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
 
 local gwarn_binder = {
-	rp_script = "",
-	delay_ms = 900,
+	rp_script_gwarn = "",
+	delay_ms_gwarn = 900,
+	rp_script_fire = "",
+	delay_ms_fire = 900,
 	bind_chat_open = "[]",
 }
+
+local article_popup_pick = {}
 
 local SPEC_BINDER_JSON_PATH = ""
 
@@ -1074,22 +1082,45 @@ local function binder_default_template_candidates()
 	return candidates
 end
 
+local function parse_binder_delay_ms(v, default)
+	default = default or 900
+	if type(v) == "number" then
+		return v
+	end
+	if type(v) == "string" then
+		return tonumber(v) or default
+	end
+	return default
+end
+
 local function apply_binder_table(data)
 	if type(data) ~= "table" then
 		return false
 	end
-	if type(data.rp_script) == "string" then
-		gwarn_binder.rp_script = data.rp_script
+	if type(data.rp_script_gwarn) == "string" then
+		gwarn_binder.rp_script_gwarn = data.rp_script_gwarn
+	elseif type(data.rp_script) == "string" then
+		gwarn_binder.rp_script_gwarn = data.rp_script
 	end
-	if type(data.delay_ms) == "number" then
-		gwarn_binder.delay_ms = data.delay_ms
-	elseif type(data.delay_ms) == "string" then
-		gwarn_binder.delay_ms = tonumber(data.delay_ms) or 900
+	if type(data.rp_script_fire) == "string" then
+		gwarn_binder.rp_script_fire = data.rp_script_fire
+	end
+	if data.delay_ms_gwarn ~= nil then
+		gwarn_binder.delay_ms_gwarn = parse_binder_delay_ms(data.delay_ms_gwarn, 900)
+	elseif data.delay_ms ~= nil then
+		gwarn_binder.delay_ms_gwarn = parse_binder_delay_ms(data.delay_ms, 900)
+	end
+	if data.delay_ms_fire ~= nil then
+		gwarn_binder.delay_ms_fire = parse_binder_delay_ms(data.delay_ms_fire, 900)
 	end
 	if type(data.bind_chat_open) == "string" then
 		gwarn_binder.bind_chat_open = data.bind_chat_open
 	end
 	return true
+end
+
+local function binder_script_nonempty(s)
+	return (tostring(s or ""):match("^%s*(.-)%s*$") or "") ~= ""
 end
 
 local function read_binder_json_file(path)
@@ -1149,8 +1180,10 @@ end
 local function create_user_binder_from_default()
 	if not ensure_binder_default_template() then
 		print("[gwarnn] нет VigGwarnBinderDefault.json — создаётся пустой VigGwarnBinder.json")
-		gwarn_binder.rp_script = ""
-		gwarn_binder.delay_ms = 900
+		gwarn_binder.rp_script_gwarn = ""
+		gwarn_binder.delay_ms_gwarn = 900
+		gwarn_binder.rp_script_fire = ""
+		gwarn_binder.delay_ms_fire = 900
 		gwarn_binder.bind_chat_open = "[]"
 		return save_gwarn_binder_settings()
 	end
@@ -1161,6 +1194,32 @@ local function create_user_binder_from_default()
 		return true
 	end
 	return false
+end
+
+local function ensure_binder_scripts_from_template()
+	local need_g = not binder_script_nonempty(gwarn_binder.rp_script_gwarn)
+	local need_f = not binder_script_nonempty(gwarn_binder.rp_script_fire)
+	if not need_g and not need_f then
+		return false
+	end
+	if not ensure_binder_default_template() then
+		return false
+	end
+	local tpl = read_binder_json_file(get_binder_default_json_path())
+	if not tpl then
+		return false
+	end
+	if need_g then
+		if type(tpl.rp_script_gwarn) == "string" and tpl.rp_script_gwarn:match("%S") then
+			gwarn_binder.rp_script_gwarn = tpl.rp_script_gwarn
+		elseif type(tpl.rp_script) == "string" and tpl.rp_script:match("%S") then
+			gwarn_binder.rp_script_gwarn = tpl.rp_script
+		end
+	end
+	if need_f and type(tpl.rp_script_fire) == "string" and tpl.rp_script_fire:match("%S") then
+		gwarn_binder.rp_script_fire = tpl.rp_script_fire
+	end
+	return need_g or need_f
 end
 
 local function encode_binder_json(t)
@@ -1204,21 +1263,29 @@ local function charbuf_to_utf8(buf, max_bytes)
 end
 
 local function binder_ui_sync_from_runtime()
-	utf8_to_charbuf(gwarn_binder.rp_script, SpecBinderUi.buf_script, 8192)
+	utf8_to_charbuf(gwarn_binder.rp_script_gwarn, SpecBinderUi.buf_script_gwarn, 8192)
+	utf8_to_charbuf(gwarn_binder.rp_script_fire, SpecBinderUi.buf_script_fire, 8192)
 	utf8_to_charbuf(gwarn_binder.bind_chat_open, SpecBinderUi.buf_bind, 512)
-	utf8_to_charbuf(tostring(gwarn_binder.delay_ms or 900), SpecBinderUi.buf_delay, 16)
+	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_gwarn or 900), SpecBinderUi.buf_delay_gwarn, 16)
+	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_fire or 900), SpecBinderUi.buf_delay_fire, 16)
 end
 
-local function binder_ui_apply_to_runtime()
-	gwarn_binder.rp_script = charbuf_to_utf8(SpecBinderUi.buf_script, 8192)
-	local dm = tonumber(charbuf_to_utf8(SpecBinderUi.buf_delay, 16)) or 900
+local function clamp_binder_delay_ms(dm)
+	dm = tonumber(dm) or 900
 	if dm < 50 then
 		dm = 50
 	end
 	if dm > 60000 then
 		dm = 60000
 	end
-	gwarn_binder.delay_ms = dm
+	return dm
+end
+
+local function binder_ui_apply_to_runtime()
+	gwarn_binder.rp_script_gwarn = charbuf_to_utf8(SpecBinderUi.buf_script_gwarn, 8192)
+	gwarn_binder.rp_script_fire = charbuf_to_utf8(SpecBinderUi.buf_script_fire, 8192)
+	gwarn_binder.delay_ms_gwarn = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_gwarn, 16))
+	gwarn_binder.delay_ms_fire = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_fire, 16))
 end
 
 local function try_register_gwarn_binder_hotkey()
@@ -1257,8 +1324,10 @@ local function save_gwarn_binder_settings()
 	end
 	f:write(
 		encode_binder_json({
-			rp_script = gwarn_binder.rp_script,
-			delay_ms = gwarn_binder.delay_ms,
+			rp_script_gwarn = gwarn_binder.rp_script_gwarn,
+			delay_ms_gwarn = gwarn_binder.delay_ms_gwarn,
+			rp_script_fire = gwarn_binder.rp_script_fire,
+			delay_ms_fire = gwarn_binder.delay_ms_fire,
 			bind_chat_open = gwarn_binder.bind_chat_open,
 		})
 	)
@@ -1270,8 +1339,10 @@ end
 
 local function load_gwarn_binder_settings()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
-	gwarn_binder.rp_script = ""
-	gwarn_binder.delay_ms = 900
+	gwarn_binder.rp_script_gwarn = ""
+	gwarn_binder.delay_ms_gwarn = 900
+	gwarn_binder.rp_script_fire = ""
+	gwarn_binder.delay_ms_fire = 900
 	gwarn_binder.bind_chat_open = "[]"
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
 		create_user_binder_from_default()
@@ -1279,13 +1350,8 @@ local function load_gwarn_binder_settings()
 	local data = read_binder_json_file(SPEC_BINDER_JSON_PATH)
 	if data then
 		apply_binder_table(data)
-		local saved = tostring(gwarn_binder.rp_script or ""):match("^%s*(.-)%s*$") or ""
-		if saved == "" and ensure_binder_default_template() then
-			local tpl = read_binder_json_file(get_binder_default_json_path())
-			if tpl and type(tpl.rp_script) == "string" and tpl.rp_script:match("%S") then
-				gwarn_binder.rp_script = tpl.rp_script
-				save_gwarn_binder_settings()
-			end
+		if ensure_binder_scripts_from_template() then
+			save_gwarn_binder_settings()
 		end
 	else
 		if not doesFileExist(SPEC_BINDER_JSON_PATH) then
@@ -1345,18 +1411,18 @@ local function split_binder_script(script)
 	return lines
 end
 
-local function send_gwarn_command(player_id, article_reason)
+local function send_discipline_command(player_id, article_reason, action_type)
 	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local id = tonumber(player_id)
-	local script = tostring(gwarn_binder.rp_script or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local script, dms
+	if action_type == DISCIPLINE_ACTION_FIRE then
+		script = tostring(gwarn_binder.rp_script_fire or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		dms = clamp_binder_delay_ms(gwarn_binder.delay_ms_fire)
+	else
+		script = tostring(gwarn_binder.rp_script_gwarn or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		dms = clamp_binder_delay_ms(gwarn_binder.delay_ms_gwarn)
+	end
 	local lines = split_binder_script(script)
-	local dms = tonumber(gwarn_binder.delay_ms) or 900
-	if dms < 50 then
-		dms = 50
-	end
-	if dms > 60000 then
-		dms = 60000
-	end
 	if #lines == 0 or not lua_thread or not lua_thread.create then
 		sampSendChatUtf8("/" .. GWARN_SERVER_CMD .. " " .. tostring(id) .. " " .. reason)
 		return
@@ -1660,7 +1726,7 @@ function register_spec_imgui()
 			imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 2, sizeY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
 			imgui.SetNextWindowSize(imgui.ImVec2(600 * custom_dpi, 413 * custom_dpi), imgui.Cond.FirstUseEver)
 			imgui.Begin(
-				im_utf8("Выговор (/" .. GWARN_MENU_CMD .. ")##spec_menu"),
+				im_utf8("FBI (/" .. GWARN_SERVER_CMD .. ")##spec_menu"),
 				SpecMenu.Window,
 				imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoResize
 			)
@@ -1718,14 +1784,16 @@ function register_spec_imgui()
 					if imgui.IsItemHovered() then
 						imgui.SetTooltip(
 						im_utf8(
-							"Отыгровка перед /gwarn (сохраняется в moonloader/"
+							"Отыгровки перед /"
+								.. GWARN_SERVER_CMD
+								.. " (сохраняются в moonloader/"
 								.. VIG_DATA_DIR_NAME
 								.. "/VigGwarnBinder.json)"
 						)
 					)
 					end
 				end
-				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 540 * custom_dpi), imgui.Cond.Appearing)
+				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 680 * custom_dpi), imgui.Cond.Appearing)
 				if
 					imgui.BeginPopupModal(
 						"##gwarn_binder_modal",
@@ -1733,14 +1801,22 @@ function register_spec_imgui()
 						imgui.WindowFlags.NoResize
 					)
 				then
-					imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
-					imgui.InputText("##binder_delay", SpecBinderUi.buf_delay, 16)
-					imgui.Separator()
+					imgui.TextWrapped(im_utf8("Спец. выговор — задержка между сообщениями (мс):"))
+					imgui.InputText("##binder_delay_gwarn", SpecBinderUi.buf_delay_gwarn, 16)
 					imgui.InputTextMultiline(
-						"##binder_script",
-						SpecBinderUi.buf_script,
+						"##binder_script_gwarn",
+						SpecBinderUi.buf_script_gwarn,
 						8192,
-						imgui.ImVec2(490 * custom_dpi, 270 * custom_dpi)
+						imgui.ImVec2(490 * custom_dpi, 180 * custom_dpi)
+					)
+					imgui.Separator()
+					imgui.TextWrapped(im_utf8("Увольнение — задержка между сообщениями (мс):"))
+					imgui.InputText("##binder_delay_fire", SpecBinderUi.buf_delay_fire, 16)
+					imgui.InputTextMultiline(
+						"##binder_script_fire",
+						SpecBinderUi.buf_script_fire,
+						8192,
+						imgui.ImVec2(490 * custom_dpi, 180 * custom_dpi)
 					)
 					imgui.Separator()
 					imgui.TextWrapped(im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее."))
@@ -1803,6 +1879,7 @@ function register_spec_imgui()
 											)
 										)
 									then
+										article_popup_pick[popup_id] = nil
 										imgui.OpenPopup(popup_id)
 									end
 									imgui.PopStyleColor()
@@ -1824,9 +1901,11 @@ function register_spec_imgui()
 												+ imgui.WindowFlags.AlwaysAutoResize
 										)
 									then
+										local pick = article_popup_pick[popup_id]
 										imgui.Text(im_utf8("Информация по статье"))
 										imgui.SameLine(math.max(0, imgui.GetWindowWidth() - 42 * custom_dpi))
 										if imgui.Button(im_utf8("X##close_spec"), imgui.ImVec2(24 * custom_dpi, 24 * custom_dpi)) then
+											article_popup_pick[popup_id] = nil
 											imgui.CloseCurrentPopup()
 										end
 										imgui.Separator()
@@ -1846,24 +1925,72 @@ function register_spec_imgui()
 										)
 										imgui.TextWrapped(im_utf8(item.text))
 										imgui.Separator()
-										if
-											imgui.Button(
-												im_utf8("Закрыть##spec"),
-												imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
+										if not pick then
+											imgui.TextWrapped(im_utf8("Выберите тип взыскания:"))
+											if
+												imgui.Button(
+													im_utf8("Выдать спец. выговор##pick_gwarn"),
+													imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
+												)
+											then
+												article_popup_pick[popup_id] = DISCIPLINE_ACTION_GWARN
+											end
+											imgui.SameLine()
+											if
+												imgui.Button(
+													im_utf8("Уволить##pick_fire"),
+													imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
+												)
+											then
+												article_popup_pick[popup_id] = DISCIPLINE_ACTION_FIRE
+											end
+											if
+												imgui.Button(
+													im_utf8("Закрыть##spec"),
+													imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
+												)
+											then
+												article_popup_pick[popup_id] = nil
+												imgui.CloseCurrentPopup()
+											end
+										else
+											local action_label = pick == DISCIPLINE_ACTION_FIRE and "Увольнение" or "Спец. выговор"
+											imgui.TextWrapped(
+												im_utf8("Подтвердите действие: ")
+													.. im_utf8(action_label)
+													.. im_utf8(" по статье ")
+													.. im_utf8(item.reason)
 											)
-										then
-											imgui.CloseCurrentPopup()
-										end
-										imgui.SameLine()
-										if
-											imgui.Button(
-												im_utf8("Подтвердить /" .. GWARN_SERVER_CMD .. "##spec"),
-												imgui.ImVec2(190 * custom_dpi, 25 * custom_dpi)
-											)
-										then
-											SpecMenu.Window[0] = false
-											send_gwarn_command(spec_target_id, item.reason)
-											imgui.CloseCurrentPopup()
+											if
+												imgui.Button(
+													im_utf8("Назад##spec_back"),
+													imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
+												)
+											then
+												article_popup_pick[popup_id] = nil
+											end
+											imgui.SameLine()
+											if
+												imgui.Button(
+													im_utf8("Закрыть##spec"),
+													imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
+												)
+											then
+												article_popup_pick[popup_id] = nil
+												imgui.CloseCurrentPopup()
+											end
+											imgui.SameLine()
+											if
+												imgui.Button(
+													im_utf8("Подтвердить /" .. GWARN_SERVER_CMD .. "##spec"),
+													imgui.ImVec2(190 * custom_dpi, 25 * custom_dpi)
+												)
+											then
+												SpecMenu.Window[0] = false
+												send_discipline_command(spec_target_id, item.reason, pick)
+												article_popup_pick[popup_id] = nil
+												imgui.CloseCurrentPopup()
+											end
 										end
 										imgui.EndPopup()
 									end
