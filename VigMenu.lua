@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.1.4")
+script_version("5.1.5")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.1.4"
+local SCRIPT_VERSION_TEXT = "5.1.5"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -1984,8 +1984,6 @@ function register_spec_imgui()
 												+ imgui.WindowFlags.AlwaysAutoResize
 										)
 									then
-										local gwarn_cmd = get_binder_server_cmd(DISCIPLINE_ACTION_GWARN)
-										local fire_cmd = get_binder_server_cmd(DISCIPLINE_ACTION_FIRE)
 										local close_sz = 26 * custom_dpi
 										local header_y = imgui.GetCursorPosY()
 										imgui.Text(im_utf8("Информация по статье"))
@@ -2019,10 +2017,21 @@ function register_spec_imgui()
 										)
 										imgui.TextWrapped(im_utf8(item.text))
 										imgui.Separator()
+										local btn_w = imgui.GetMiddleButtonX(3)
+										local btn_h = 28 * custom_dpi
 										if
 											imgui.Button(
-												im_utf8("Подтвердить /" .. gwarn_cmd .. "##spec_gwarn"),
-												imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
+												im_utf8("Закрыть##spec"),
+												imgui.ImVec2(btn_w, btn_h)
+											)
+										then
+											imgui.CloseCurrentPopup()
+										end
+										imgui.SameLine()
+										if
+											imgui.Button(
+												im_utf8("Выговор##spec_gwarn"),
+												imgui.ImVec2(btn_w, btn_h)
 											)
 										then
 											SpecMenu.Window[0] = false
@@ -2032,8 +2041,8 @@ function register_spec_imgui()
 										imgui.SameLine()
 										if
 											imgui.Button(
-												im_utf8("Уволить /" .. fire_cmd .. "##spec_fire"),
-												imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
+												im_utf8("Уволить##spec_fire"),
+												imgui.ImVec2(btn_w, btn_h)
 											)
 										then
 											SpecMenu.Window[0] = false

@@ -1,6 +1,6 @@
 {
-  "current_version": "5.1.4",
-  "update_info": "Окно подтверждения: крестик и две кнопки выговор/увольнение",
+  "current_version": "5.1.5",
+  "update_info": "Подтверждение статьи: три кнопки в ряд — Закрыть, Выговор, Уволить",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
   "articles_version": "16",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
