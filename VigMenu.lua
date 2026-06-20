@@ -3,15 +3,15 @@
   Данные: VigArticles.json, VigGwarnBinder.json (настройки), VigGwarnBinderDefault.json (шаблон отыгровки) в moonloader/VigMenu/
   (создаётся при первом запуске). Обновление .lua с GitHub не затирает эту папку.
   VigArticles.json только с GitHub (старые копии из moonloader не подхватываются).
-  /gwarnn [id] or /gw [id] opens menu; gear: RP chains (VigGwarnBinder.json) then /fbim. Optional hotkey (mimgui_hotkeys JSON) opens chat with /gwarnn .
+  /vigmenu [id] or /gw [id] opens menu; gear: RP chains then /gwarn or /demoute. Optional hotkey opens chat with /vigmenu .
   Diagnose: MoonLoader console shows [gwarnn] main() OK. If STOP, install sampfuncs. If no lines, script crashed on require.
   Uses sampRegisterChatCommand + samp.events onSendCommand only (onSendChat removed � Arizona conflict).
 ]]
 
 script_name("Меню выговоров (Vig)")
-script_description("Меню /fbim: /gwarnn [id] → спец. выговор или увольнение")
+script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.1.0")
+script_version("5.1.2")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.1.0"
+local SCRIPT_VERSION_TEXT = "5.1.2"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -267,10 +267,11 @@ local sampev_ok, sampev = pcall(require, "samp.events")
 local gwarn_inner_onSendCommand = nil
 
 local custom_dpi = 1.0
-local GWARN_MENU_CMD = "gwarnn"
+local GWARN_MENU_CMD = "vigmenu"
 local GWARN_MENU_CMD_ALT = "gw"
-local GWARN_RELOAD_CMD = "gwarnn_reload"
-local GWARN_SERVER_CMD = "fbim"
+local GWARN_RELOAD_CMD = "vigmenu_reload"
+local GWARN_SERVER_CMD = "gwarn"
+local DEMOTE_SERVER_CMD = "demoute"
 local DISCIPLINE_ACTION_GWARN = "gwarn"
 local DISCIPLINE_ACTION_FIRE = "fire"
 local message_color = 0x009eff
@@ -340,6 +341,7 @@ local SpecBinderUi = {
 	buf_bind = imgui.new.char[512](),
 	buf_delay_gwarn = imgui.new.char[16](),
 	buf_delay_fire = imgui.new.char[16](),
+	buf_fire_ban_days = imgui.new.char[8](),
 }
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
@@ -349,6 +351,7 @@ local gwarn_binder = {
 	delay_ms_gwarn = 900,
 	rp_script_fire = "",
 	delay_ms_fire = 900,
+	fire_ban_days = 0,
 	bind_chat_open = "[]",
 }
 
@@ -1093,6 +1096,17 @@ local function parse_binder_delay_ms(v, default)
 	return default
 end
 
+local function clamp_fire_ban_days(v)
+	v = math.floor(tonumber(v) or 0)
+	if v < 0 then
+		v = 0
+	end
+	if v > 14 then
+		v = 14
+	end
+	return v
+end
+
 local function apply_binder_table(data)
 	if type(data) ~= "table" then
 		return false
@@ -1112,6 +1126,9 @@ local function apply_binder_table(data)
 	end
 	if data.delay_ms_fire ~= nil then
 		gwarn_binder.delay_ms_fire = parse_binder_delay_ms(data.delay_ms_fire, 900)
+	end
+	if data.fire_ban_days ~= nil then
+		gwarn_binder.fire_ban_days = clamp_fire_ban_days(data.fire_ban_days)
 	end
 	if type(data.bind_chat_open) == "string" then
 		gwarn_binder.bind_chat_open = data.bind_chat_open
@@ -1184,6 +1201,7 @@ local function create_user_binder_from_default()
 		gwarn_binder.delay_ms_gwarn = 900
 		gwarn_binder.rp_script_fire = ""
 		gwarn_binder.delay_ms_fire = 900
+		gwarn_binder.fire_ban_days = 0
 		gwarn_binder.bind_chat_open = "[]"
 		return save_gwarn_binder_settings()
 	end
@@ -1268,6 +1286,7 @@ local function binder_ui_sync_from_runtime()
 	utf8_to_charbuf(gwarn_binder.bind_chat_open, SpecBinderUi.buf_bind, 512)
 	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_gwarn or 900), SpecBinderUi.buf_delay_gwarn, 16)
 	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_fire or 900), SpecBinderUi.buf_delay_fire, 16)
+	utf8_to_charbuf(tostring(gwarn_binder.fire_ban_days or 0), SpecBinderUi.buf_fire_ban_days, 8)
 end
 
 local function clamp_binder_delay_ms(dm)
@@ -1286,6 +1305,17 @@ local function binder_ui_apply_to_runtime()
 	gwarn_binder.rp_script_fire = charbuf_to_utf8(SpecBinderUi.buf_script_fire, 8192)
 	gwarn_binder.delay_ms_gwarn = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_gwarn, 16))
 	gwarn_binder.delay_ms_fire = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_fire, 16))
+	gwarn_binder.fire_ban_days = clamp_fire_ban_days(charbuf_to_utf8(SpecBinderUi.buf_fire_ban_days, 8))
+end
+
+local function build_discipline_chat_line(player_id, article_reason, action_type)
+	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local id = tonumber(player_id)
+	if action_type == DISCIPLINE_ACTION_FIRE then
+		local days = clamp_fire_ban_days(gwarn_binder.fire_ban_days)
+		return "/" .. DEMOTE_SERVER_CMD .. " " .. tostring(id) .. " " .. tostring(days) .. " " .. reason
+	end
+	return "/" .. GWARN_SERVER_CMD .. " " .. tostring(id) .. " " .. reason
 end
 
 local function try_register_gwarn_binder_hotkey()
@@ -1328,6 +1358,7 @@ local function save_gwarn_binder_settings()
 			delay_ms_gwarn = gwarn_binder.delay_ms_gwarn,
 			rp_script_fire = gwarn_binder.rp_script_fire,
 			delay_ms_fire = gwarn_binder.delay_ms_fire,
+			fire_ban_days = gwarn_binder.fire_ban_days,
 			bind_chat_open = gwarn_binder.bind_chat_open,
 		})
 	)
@@ -1343,6 +1374,7 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.delay_ms_gwarn = 900
 	gwarn_binder.rp_script_fire = ""
 	gwarn_binder.delay_ms_fire = 900
+	gwarn_binder.fire_ban_days = 0
 	gwarn_binder.bind_chat_open = "[]"
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
 		create_user_binder_from_default()
@@ -1412,8 +1444,9 @@ local function split_binder_script(script)
 end
 
 local function send_discipline_command(player_id, article_reason, action_type)
-	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local id = tonumber(player_id)
+	local chat_line = build_discipline_chat_line(id, article_reason, action_type)
+	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local script, dms
 	if action_type == DISCIPLINE_ACTION_FIRE then
 		script = tostring(gwarn_binder.rp_script_fire or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -1424,7 +1457,7 @@ local function send_discipline_command(player_id, article_reason, action_type)
 	end
 	local lines = split_binder_script(script)
 	if #lines == 0 or not lua_thread or not lua_thread.create then
-		sampSendChatUtf8("/" .. GWARN_SERVER_CMD .. " " .. tostring(id) .. " " .. reason)
+		sampSendChatUtf8(chat_line)
 		return
 	end
 	lua_thread.create(function()
@@ -1443,7 +1476,7 @@ local function send_discipline_command(player_id, article_reason, action_type)
 				end
 			end
 		end
-		sampSendChatUtf8("/" .. GWARN_SERVER_CMD .. " " .. tostring(id) .. " " .. reason)
+		sampSendChatUtf8(chat_line)
 	end)
 end
 
@@ -1726,7 +1759,7 @@ function register_spec_imgui()
 			imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 2, sizeY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
 			imgui.SetNextWindowSize(imgui.ImVec2(600 * custom_dpi, 413 * custom_dpi), imgui.Cond.FirstUseEver)
 			imgui.Begin(
-				im_utf8("FBI (/" .. GWARN_SERVER_CMD .. ")##spec_menu"),
+				im_utf8("VigMenu (/" .. GWARN_MENU_CMD .. ")##spec_menu"),
 				SpecMenu.Window,
 				imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoResize
 			)
@@ -1786,14 +1819,16 @@ function register_spec_imgui()
 						im_utf8(
 							"Отыгровки перед /"
 								.. GWARN_SERVER_CMD
-								.. " (сохраняются в moonloader/"
+								.. " или /"
+								.. DEMOTE_SERVER_CMD
+								.. " (moonloader/"
 								.. VIG_DATA_DIR_NAME
 								.. "/VigGwarnBinder.json)"
 						)
 					)
 					end
 				end
-				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 680 * custom_dpi), imgui.Cond.Appearing)
+				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 720 * custom_dpi), imgui.Cond.Appearing)
 				if
 					imgui.BeginPopupModal(
 						"##gwarn_binder_modal",
@@ -1810,6 +1845,8 @@ function register_spec_imgui()
 						imgui.ImVec2(490 * custom_dpi, 180 * custom_dpi)
 					)
 					imgui.Separator()
+					imgui.TextWrapped(im_utf8("Увольнение — дней запрета вступления (0–14, 0 = без запрета):"))
+					imgui.InputText("##binder_fire_ban_days", SpecBinderUi.buf_fire_ban_days, 8)
 					imgui.TextWrapped(im_utf8("Увольнение — задержка между сообщениями (мс):"))
 					imgui.InputText("##binder_delay_fire", SpecBinderUi.buf_delay_fire, 16)
 					imgui.InputTextMultiline(
@@ -1918,9 +1955,7 @@ function register_spec_imgui()
 										)
 										imgui.Text(im_utf8("Тип: ") .. im_utf8(item.lvl))
 										imgui.Text(
-											im_utf8("Статья (/")
-												.. GWARN_SERVER_CMD
-												.. "): "
+											im_utf8("Статья: ")
 												.. im_utf8(item.reason)
 										)
 										imgui.TextWrapped(im_utf8(item.text))
@@ -1955,12 +1990,30 @@ function register_spec_imgui()
 											end
 										else
 											local action_label = pick == DISCIPLINE_ACTION_FIRE and "Увольнение" or "Спец. выговор"
+											local confirm_cmd = pick == DISCIPLINE_ACTION_FIRE and DEMOTE_SERVER_CMD or GWARN_SERVER_CMD
 											imgui.TextWrapped(
 												im_utf8("Подтвердите действие: ")
 													.. im_utf8(action_label)
 													.. im_utf8(" по статье ")
 													.. im_utf8(item.reason)
 											)
+											if pick == DISCIPLINE_ACTION_FIRE then
+												imgui.TextWrapped(
+													im_utf8("Команда: /")
+														.. DEMOTE_SERVER_CMD
+														.. " "
+														.. tostring(spec_target_id)
+														.. " "
+														.. tostring(clamp_fire_ban_days(gwarn_binder.fire_ban_days))
+														.. " "
+														.. im_utf8(item.reason)
+												)
+												imgui.TextWrapped(
+													im_utf8("Дней запрета: ")
+														.. tostring(clamp_fire_ban_days(gwarn_binder.fire_ban_days))
+														.. im_utf8(" (меняется в Настр.)")
+												)
+											end
 											if
 												imgui.Button(
 													im_utf8("Назад##spec_back"),
@@ -1982,7 +2035,7 @@ function register_spec_imgui()
 											imgui.SameLine()
 											if
 												imgui.Button(
-													im_utf8("Подтвердить /" .. GWARN_SERVER_CMD .. "##spec"),
+													im_utf8("Подтвердить /" .. confirm_cmd .. "##spec"),
 													imgui.ImVec2(190 * custom_dpi, 25 * custom_dpi)
 												)
 											then
@@ -2077,7 +2130,7 @@ function main()
 		return
 	end
 	_G.VIGMENU_GWARNN_LOADED = true
-	print("[gwarnn] main() OK — сначала команды, затем ImGui (так /gwarnn работает даже при сбое темы)")
+	print("[gwarnn] main() OK — сначала команды, затем ImGui (так /vigmenu работает даже при сбое темы)")
 
 	SPEC_JSON_PATH = get_spec_json_path()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
@@ -2098,7 +2151,7 @@ function main()
 	local imgui_ok, imgui_err = pcall(register_spec_imgui)
 	if not imgui_ok then
 		print("[gwarnn] register_spec_imgui при старте: " .. tostring(imgui_err))
-		print("[gwarnn] Меню повторится при /gwarnn; проверьте mimgui")
+		print("[gwarnn] Меню повторится при /vigmenu; проверьте mimgui")
 	end
 
 	welcome_gwarn_message()

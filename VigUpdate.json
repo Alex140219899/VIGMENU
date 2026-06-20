@@ -1,8 +1,8 @@
 {
-  "current_version": "5.1.0",
-  "update_info": "Спец. выговор и увольнение через /fbim, две отыгровки в настройках",
+  "current_version": "5.1.2",
+  "update_info": "/gwarn для спец. выговора, /demoute для увольнения, дни запрета в настройках",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
-  "articles_version": "15",
-  "articles_info": "ЗоГС: статьи 17–42 (обновлённый закон)",
+  "articles_version": "16",
+  "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
   "articles_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigArticles.json"
 }
