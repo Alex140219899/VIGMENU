@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.1.2")
+script_version("5.1.3")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.1.2"
+local SCRIPT_VERSION_TEXT = "5.1.3"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -342,6 +342,8 @@ local SpecBinderUi = {
 	buf_delay_gwarn = imgui.new.char[16](),
 	buf_delay_fire = imgui.new.char[16](),
 	buf_fire_ban_days = imgui.new.char[8](),
+	buf_cmd_gwarn = imgui.new.char[64](),
+	buf_cmd_fire = imgui.new.char[64](),
 }
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
@@ -349,13 +351,13 @@ local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
 local gwarn_binder = {
 	rp_script_gwarn = "",
 	delay_ms_gwarn = 900,
+	server_cmd_gwarn = "gwarn",
 	rp_script_fire = "",
 	delay_ms_fire = 900,
 	fire_ban_days = 0,
+	server_cmd_fire = "demoute",
 	bind_chat_open = "[]",
 }
-
-local article_popup_pick = {}
 
 local SPEC_BINDER_JSON_PATH = ""
 
@@ -1107,6 +1109,25 @@ local function clamp_fire_ban_days(v)
 	return v
 end
 
+local function normalize_server_cmd(s, default)
+	s = tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	s = s:gsub("^/", "")
+	if s == "" then
+		return default
+	end
+	if not s:match("^[%w_]+$") then
+		return default
+	end
+	return s
+end
+
+local function get_binder_server_cmd(action_type)
+	if action_type == DISCIPLINE_ACTION_FIRE then
+		return normalize_server_cmd(gwarn_binder.server_cmd_fire, DEMOTE_SERVER_CMD)
+	end
+	return normalize_server_cmd(gwarn_binder.server_cmd_gwarn, GWARN_SERVER_CMD)
+end
+
 local function apply_binder_table(data)
 	if type(data) ~= "table" then
 		return false
@@ -1129,6 +1150,12 @@ local function apply_binder_table(data)
 	end
 	if data.fire_ban_days ~= nil then
 		gwarn_binder.fire_ban_days = clamp_fire_ban_days(data.fire_ban_days)
+	end
+	if type(data.server_cmd_gwarn) == "string" then
+		gwarn_binder.server_cmd_gwarn = normalize_server_cmd(data.server_cmd_gwarn, GWARN_SERVER_CMD)
+	end
+	if type(data.server_cmd_fire) == "string" then
+		gwarn_binder.server_cmd_fire = normalize_server_cmd(data.server_cmd_fire, DEMOTE_SERVER_CMD)
 	end
 	if type(data.bind_chat_open) == "string" then
 		gwarn_binder.bind_chat_open = data.bind_chat_open
@@ -1202,6 +1229,8 @@ local function create_user_binder_from_default()
 		gwarn_binder.rp_script_fire = ""
 		gwarn_binder.delay_ms_fire = 900
 		gwarn_binder.fire_ban_days = 0
+		gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
+		gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
 		gwarn_binder.bind_chat_open = "[]"
 		return save_gwarn_binder_settings()
 	end
@@ -1287,6 +1316,8 @@ local function binder_ui_sync_from_runtime()
 	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_gwarn or 900), SpecBinderUi.buf_delay_gwarn, 16)
 	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_fire or 900), SpecBinderUi.buf_delay_fire, 16)
 	utf8_to_charbuf(tostring(gwarn_binder.fire_ban_days or 0), SpecBinderUi.buf_fire_ban_days, 8)
+	utf8_to_charbuf(get_binder_server_cmd(DISCIPLINE_ACTION_GWARN), SpecBinderUi.buf_cmd_gwarn, 64)
+	utf8_to_charbuf(get_binder_server_cmd(DISCIPLINE_ACTION_FIRE), SpecBinderUi.buf_cmd_fire, 64)
 end
 
 local function clamp_binder_delay_ms(dm)
@@ -1306,16 +1337,19 @@ local function binder_ui_apply_to_runtime()
 	gwarn_binder.delay_ms_gwarn = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_gwarn, 16))
 	gwarn_binder.delay_ms_fire = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_fire, 16))
 	gwarn_binder.fire_ban_days = clamp_fire_ban_days(charbuf_to_utf8(SpecBinderUi.buf_fire_ban_days, 8))
+	gwarn_binder.server_cmd_gwarn = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_gwarn, 64), GWARN_SERVER_CMD)
+	gwarn_binder.server_cmd_fire = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_fire, 64), DEMOTE_SERVER_CMD)
 end
 
 local function build_discipline_chat_line(player_id, article_reason, action_type)
 	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local id = tonumber(player_id)
+	local cmd = get_binder_server_cmd(action_type)
 	if action_type == DISCIPLINE_ACTION_FIRE then
 		local days = clamp_fire_ban_days(gwarn_binder.fire_ban_days)
-		return "/" .. DEMOTE_SERVER_CMD .. " " .. tostring(id) .. " " .. tostring(days) .. " " .. reason
+		return "/" .. cmd .. " " .. tostring(id) .. " " .. tostring(days) .. " " .. reason
 	end
-	return "/" .. GWARN_SERVER_CMD .. " " .. tostring(id) .. " " .. reason
+	return "/" .. cmd .. " " .. tostring(id) .. " " .. reason
 end
 
 local function try_register_gwarn_binder_hotkey()
@@ -1359,6 +1393,8 @@ local function save_gwarn_binder_settings()
 			rp_script_fire = gwarn_binder.rp_script_fire,
 			delay_ms_fire = gwarn_binder.delay_ms_fire,
 			fire_ban_days = gwarn_binder.fire_ban_days,
+			server_cmd_gwarn = gwarn_binder.server_cmd_gwarn,
+			server_cmd_fire = gwarn_binder.server_cmd_fire,
 			bind_chat_open = gwarn_binder.bind_chat_open,
 		})
 	)
@@ -1375,6 +1411,8 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.rp_script_fire = ""
 	gwarn_binder.delay_ms_fire = 900
 	gwarn_binder.fire_ban_days = 0
+	gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
+	gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
 	gwarn_binder.bind_chat_open = "[]"
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
 		create_user_binder_from_default()
@@ -1817,18 +1855,14 @@ function register_spec_imgui()
 					if imgui.IsItemHovered() then
 						imgui.SetTooltip(
 						im_utf8(
-							"Отыгровки перед /"
-								.. GWARN_SERVER_CMD
-								.. " или /"
-								.. DEMOTE_SERVER_CMD
-								.. " (moonloader/"
+							"Отыгровки и команды (moonloader/"
 								.. VIG_DATA_DIR_NAME
 								.. "/VigGwarnBinder.json)"
 						)
 					)
 					end
 				end
-				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 720 * custom_dpi), imgui.Cond.Appearing)
+				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 460 * custom_dpi), imgui.Cond.Appearing)
 				if
 					imgui.BeginPopupModal(
 						"##gwarn_binder_modal",
@@ -1836,25 +1870,38 @@ function register_spec_imgui()
 						imgui.WindowFlags.NoResize
 					)
 				then
-					imgui.TextWrapped(im_utf8("Спец. выговор — задержка между сообщениями (мс):"))
-					imgui.InputText("##binder_delay_gwarn", SpecBinderUi.buf_delay_gwarn, 16)
-					imgui.InputTextMultiline(
-						"##binder_script_gwarn",
-						SpecBinderUi.buf_script_gwarn,
-						8192,
-						imgui.ImVec2(490 * custom_dpi, 180 * custom_dpi)
-					)
-					imgui.Separator()
-					imgui.TextWrapped(im_utf8("Увольнение — дней запрета вступления (0–14, 0 = без запрета):"))
-					imgui.InputText("##binder_fire_ban_days", SpecBinderUi.buf_fire_ban_days, 8)
-					imgui.TextWrapped(im_utf8("Увольнение — задержка между сообщениями (мс):"))
-					imgui.InputText("##binder_delay_fire", SpecBinderUi.buf_delay_fire, 16)
-					imgui.InputTextMultiline(
-						"##binder_script_fire",
-						SpecBinderUi.buf_script_fire,
-						8192,
-						imgui.ImVec2(490 * custom_dpi, 180 * custom_dpi)
-					)
+					if imgui.CollapsingHeader(im_utf8("Спец. выговор##binder_sec_gwarn")) then
+						imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
+						imgui.InputText("##binder_cmd_gwarn", SpecBinderUi.buf_cmd_gwarn, 64)
+						if imgui.IsItemHovered() then
+							imgui.SetTooltip(im_utf8("Формат: gwarn — подставятся id и статья"))
+						end
+						imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
+						imgui.InputText("##binder_delay_gwarn", SpecBinderUi.buf_delay_gwarn, 16)
+						imgui.InputTextMultiline(
+							"##binder_script_gwarn",
+							SpecBinderUi.buf_script_gwarn,
+							8192,
+							imgui.ImVec2(490 * custom_dpi, 140 * custom_dpi)
+						)
+					end
+					if imgui.CollapsingHeader(im_utf8("Увольнение##binder_sec_fire")) then
+						imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
+						imgui.InputText("##binder_cmd_fire", SpecBinderUi.buf_cmd_fire, 64)
+						if imgui.IsItemHovered() then
+							imgui.SetTooltip(im_utf8("Формат: demoute — подставятся id, дни запрета и статья"))
+						end
+						imgui.TextWrapped(im_utf8("Дней запрета вступления (0–14, 0 = без запрета):"))
+						imgui.InputText("##binder_fire_ban_days", SpecBinderUi.buf_fire_ban_days, 8)
+						imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
+						imgui.InputText("##binder_delay_fire", SpecBinderUi.buf_delay_fire, 16)
+						imgui.InputTextMultiline(
+							"##binder_script_fire",
+							SpecBinderUi.buf_script_fire,
+							8192,
+							imgui.ImVec2(490 * custom_dpi, 140 * custom_dpi)
+						)
+					end
 					imgui.Separator()
 					imgui.TextWrapped(im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее."))
 					if UpdateUi.busy then
@@ -1916,7 +1963,6 @@ function register_spec_imgui()
 											)
 										)
 									then
-										article_popup_pick[popup_id] = nil
 										imgui.OpenPopup(popup_id)
 									end
 									imgui.PopStyleColor()
@@ -1938,11 +1984,12 @@ function register_spec_imgui()
 												+ imgui.WindowFlags.AlwaysAutoResize
 										)
 									then
-										local pick = article_popup_pick[popup_id]
+										local gwarn_cmd = get_binder_server_cmd(DISCIPLINE_ACTION_GWARN)
+										local fire_cmd = get_binder_server_cmd(DISCIPLINE_ACTION_FIRE)
+										local fire_days = clamp_fire_ban_days(gwarn_binder.fire_ban_days)
 										imgui.Text(im_utf8("Информация по статье"))
 										imgui.SameLine(math.max(0, imgui.GetWindowWidth() - 42 * custom_dpi))
 										if imgui.Button(im_utf8("X##close_spec"), imgui.ImVec2(24 * custom_dpi, 24 * custom_dpi)) then
-											article_popup_pick[popup_id] = nil
 											imgui.CloseCurrentPopup()
 										end
 										imgui.Separator()
@@ -1960,90 +2007,60 @@ function register_spec_imgui()
 										)
 										imgui.TextWrapped(im_utf8(item.text))
 										imgui.Separator()
-										if not pick then
-											imgui.TextWrapped(im_utf8("Выберите тип взыскания:"))
-											if
-												imgui.Button(
-													im_utf8("Выдать спец. выговор##pick_gwarn"),
-													imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
-												)
-											then
-												article_popup_pick[popup_id] = DISCIPLINE_ACTION_GWARN
-											end
-											imgui.SameLine()
-											if
-												imgui.Button(
-													im_utf8("Уволить##pick_fire"),
-													imgui.ImVec2(240 * custom_dpi, 28 * custom_dpi)
-												)
-											then
-												article_popup_pick[popup_id] = DISCIPLINE_ACTION_FIRE
-											end
-											if
-												imgui.Button(
-													im_utf8("Закрыть##spec"),
-													imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
-												)
-											then
-												article_popup_pick[popup_id] = nil
-												imgui.CloseCurrentPopup()
-											end
-										else
-											local action_label = pick == DISCIPLINE_ACTION_FIRE and "Увольнение" or "Спец. выговор"
-											local confirm_cmd = pick == DISCIPLINE_ACTION_FIRE and DEMOTE_SERVER_CMD or GWARN_SERVER_CMD
+										if imgui.CollapsingHeader(im_utf8("Спец. выговор##spec_gwarn_" .. chapter_idx .. "_" .. index)) then
 											imgui.TextWrapped(
-												im_utf8("Подтвердите действие: ")
-													.. im_utf8(action_label)
-													.. im_utf8(" по статье ")
+												im_utf8("Команда: /")
+													.. gwarn_cmd
+													.. " "
+													.. tostring(spec_target_id)
+													.. " "
 													.. im_utf8(item.reason)
 											)
-											if pick == DISCIPLINE_ACTION_FIRE then
-												imgui.TextWrapped(
-													im_utf8("Команда: /")
-														.. DEMOTE_SERVER_CMD
-														.. " "
-														.. tostring(spec_target_id)
-														.. " "
-														.. tostring(clamp_fire_ban_days(gwarn_binder.fire_ban_days))
-														.. " "
-														.. im_utf8(item.reason)
-												)
-												imgui.TextWrapped(
-													im_utf8("Дней запрета: ")
-														.. tostring(clamp_fire_ban_days(gwarn_binder.fire_ban_days))
-														.. im_utf8(" (меняется в Настр.)")
-												)
-											end
 											if
 												imgui.Button(
-													im_utf8("Назад##spec_back"),
-													imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
-												)
-											then
-												article_popup_pick[popup_id] = nil
-											end
-											imgui.SameLine()
-											if
-												imgui.Button(
-													im_utf8("Закрыть##spec"),
-													imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
-												)
-											then
-												article_popup_pick[popup_id] = nil
-												imgui.CloseCurrentPopup()
-											end
-											imgui.SameLine()
-											if
-												imgui.Button(
-													im_utf8("Подтвердить /" .. confirm_cmd .. "##spec"),
-													imgui.ImVec2(190 * custom_dpi, 25 * custom_dpi)
+													im_utf8("Подтвердить /" .. gwarn_cmd .. "##spec_gwarn"),
+													imgui.ImVec2(240 * custom_dpi, 25 * custom_dpi)
 												)
 											then
 												SpecMenu.Window[0] = false
-												send_discipline_command(spec_target_id, item.reason, pick)
-												article_popup_pick[popup_id] = nil
+												send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_GWARN)
 												imgui.CloseCurrentPopup()
 											end
+										end
+										if imgui.CollapsingHeader(im_utf8("Уволить##spec_fire_" .. chapter_idx .. "_" .. index)) then
+											imgui.TextWrapped(
+												im_utf8("Команда: /")
+													.. fire_cmd
+													.. " "
+													.. tostring(spec_target_id)
+													.. " "
+													.. tostring(fire_days)
+													.. " "
+													.. im_utf8(item.reason)
+											)
+											imgui.TextWrapped(
+												im_utf8("Дней запрета: ")
+													.. tostring(fire_days)
+													.. im_utf8(" (в Настр.)")
+											)
+											if
+												imgui.Button(
+													im_utf8("Подтвердить /" .. fire_cmd .. "##spec_fire"),
+													imgui.ImVec2(240 * custom_dpi, 25 * custom_dpi)
+												)
+											then
+												SpecMenu.Window[0] = false
+												send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_FIRE)
+												imgui.CloseCurrentPopup()
+											end
+										end
+										if
+											imgui.Button(
+												im_utf8("Закрыть##spec"),
+												imgui.ImVec2(130 * custom_dpi, 25 * custom_dpi)
+											)
+										then
+											imgui.CloseCurrentPopup()
 										end
 										imgui.EndPopup()
 									end
