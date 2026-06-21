@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.1.8")
+script_version("5.1.9")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.1.8"
+local SCRIPT_VERSION_TEXT = "5.1.9"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -360,6 +360,70 @@ local gwarn_binder = {
 }
 
 local SPEC_BINDER_JSON_PATH = ""
+
+--- Список сотрудников ОГК (только просмотр в настройках).
+local OGK_STAFF = {
+	{ role = "Ген.Аудитор", name = "Kane Drake" },
+	{ role = "Заместитель Ген.Аудитора", name = "Mae West" },
+	{ role = "Заместитель Ген.Аудитора", name = "Robert Padalecki" },
+	{ role = "Заместитель Ген.Аудитора", name = "Alan Crawford" },
+	{ role = "Федеральный Аудитор", name = "Luckas Mercy" },
+	{ role = "Федеральный Аудитор", name = "Lemon Wood" },
+	{ role = "Федеральный Аудитор", name = "Kori Shakur" },
+	{ role = "Федеральный Аудитор", name = "Вакантно" },
+	{ role = "Федеральный Аудитор", name = "Jones Sotka" },
+	{ role = "Федеральный Аудитор", name = "Alexey Fedotov" },
+	{ role = "Федеральный Аудитор", name = "Harumi Carbone" },
+	{ role = "Федеральный Аудитор", name = "Dmitriy Muller" },
+	{ role = "Окружной Аудитор", name = "Jennifer Fox" },
+	{ role = "Окружной Аудитор", name = "Tom Pearl" },
+	{ role = "Окружной Аудитор", name = "Pasha Monasik" },
+	{ role = "Окружной Аудитор", name = "Set Reaver" },
+	{ role = "Окружной Аудитор", name = "Daria Ivanova" },
+	{ role = "Окружной Аудитор", name = "Dominic Fox" },
+	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
+	{ role = "Окружной Аудитор", name = "Artem Savin" },
+	{ role = "Помощник Аудитора", name = "Sophie Rain" },
+	{ role = "Помощник Аудитора", name = "Leo Galante" },
+	{ role = "Помощник Аудитора", name = "Jenya Undertaker" },
+	{ role = "Помощник Аудитора", name = "Soul Kristian" },
+	{ role = "Помощник Аудитора", name = "Luis Love" },
+	{ role = "Помощник Аудитора", name = "Christofer Kolumb" },
+	{ role = "Помощник Аудитора", name = "Soda Lykas" },
+	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
+	{ role = "Помощник Аудитора", name = "Dante Fraze" },
+	{ role = "Помощник Аудитора", name = "Mike Vendetta" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+}
+
+local function vig_render_ogk_staff_list()
+	if not imgui.CollapsingHeader(im_utf8("Сотрудники ОГК##binder_ogk")) then
+		return
+	end
+	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(490 * custom_dpi, 220 * custom_dpi), true)
+	local last_role = nil
+	for _, entry in ipairs(OGK_STAFF) do
+		if entry.role ~= last_role then
+			if last_role then
+				imgui.Spacing()
+			end
+			imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8(entry.role))
+			last_role = entry.role
+		end
+		local vacant = entry.name == "Вакантно"
+		if vacant then
+			imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.55, 1.0), im_utf8("  — Вакантно"))
+		else
+			imgui.Text(im_utf8("  — " .. entry.name))
+		end
+	end
+	imgui.EndChild()
+end
 
 --- ImGui обнуляет только префикс до NUL; ffi.string(buf,256)+gsub("%z") склеивал хвост — «пустой» поиск оставлял старый мусор и скрывал все статьи до перезапуска.
 local function normalize_search_input()
@@ -2049,7 +2113,7 @@ function register_spec_imgui()
 					)
 					end
 				end
-				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 460 * custom_dpi), imgui.Cond.Appearing)
+				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 520 * custom_dpi), imgui.Cond.Appearing)
 				if
 					imgui.BeginPopupModal(
 						"##gwarn_binder_modal",
@@ -2089,6 +2153,7 @@ function register_spec_imgui()
 							imgui.ImVec2(490 * custom_dpi, 140 * custom_dpi)
 						)
 					end
+					vig_render_ogk_staff_list()
 					imgui.Separator()
 					imgui.TextWrapped(im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее."))
 					if UpdateUi.busy then

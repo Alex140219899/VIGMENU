@@ -1,6 +1,6 @@
 {
-  "current_version": "5.1.8",
-  "update_info": "Таймстамп перед каждой строкой в VigDisciplineLog.txt",
+  "current_version": "5.1.9",
+  "update_info": "Список сотрудников ОГК в настройках",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
   "articles_version": "16",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
