@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.1.5")
+script_version("5.1.8")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.1.5"
+local SCRIPT_VERSION_TEXT = "5.1.8"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -1481,6 +1481,175 @@ local function split_binder_script(script)
 	return lines
 end
 
+local DISCIPLINE_LOG_NAME = "VigDisciplineLog.txt"
+
+local function get_discipline_log_path()
+	return (get_spec_data_dir() .. "/" .. DISCIPLINE_LOG_NAME):gsub("\\", "/")
+end
+
+local function vig_discipline_log_has_date(content, date_str)
+	if content == "" then
+		return false
+	end
+	local esc = date_str:gsub("([%.])", "%%%1")
+	if content:match("^" .. esc .. "\n") then
+		return true
+	end
+	return content:find("\n" .. date_str .. "\n", 1, true) ~= nil
+end
+
+local vig_log_pending = nil
+
+local function vig_strip_chat_formatting(text)
+	text = tostring(text or "")
+	text = text:gsub("{%x+}", "")
+	return text:gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function vig_chat_to_utf8(text)
+	text = vig_strip_chat_formatting(text)
+	if text == "" then
+		return ""
+	end
+	local ok, r = pcall(function()
+		return u8(text)
+	end)
+	if ok and type(r) == "string" and r ~= "" then
+		return r
+	end
+	return text
+end
+
+local function vig_reason_loose_match(msg, reason)
+	reason = tostring(reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if reason == "" then
+		return true
+	end
+	if msg:find(reason, 1, true) then
+		return true
+	end
+	local num = reason:match("^([%d%.]+)")
+	if num and msg:find(num, 1, true) then
+		return true
+	end
+	return false
+end
+
+local function vig_append_log_raw_line(line)
+	line = tostring(line or ""):gsub("\r", ""):gsub("\n", " ")
+	line = line:gsub("^%s+", ""):gsub("%s+$", "")
+	if line == "" then
+		return
+	end
+	ensure_spec_data_dir()
+	local path = get_discipline_log_path()
+	local today = os.date("%d.%m.%Y")
+
+	local existing = ""
+	if doesFileExist(path) then
+		local rf = io.open(path, "r")
+		if rf then
+			existing = rf:read("*a") or ""
+			rf:close()
+		end
+	end
+
+	local out = existing
+	if not vig_discipline_log_has_date(existing, today) then
+		if existing ~= "" and not existing:match("\n$") then
+			out = out .. "\n"
+		end
+		if existing ~= "" then
+			out = out .. "\n"
+		end
+		out = out .. today .. "\n"
+	end
+	out = out .. "[" .. os.date("%d.%m.%Y %H:%M:%S") .. "] " .. line .. "\n"
+
+	local wf, err = io.open(path, "w")
+	if not wf then
+		print("[gwarnn] не удалось записать лог наказаний: " .. tostring(err))
+		return
+	end
+	wf:write(out)
+	wf:close()
+end
+
+local function vig_set_log_pending(action_type, player_id, article_reason)
+	vig_log_pending = {
+		action_type = action_type,
+		reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", ""),
+		target_id = tonumber(player_id),
+		expires = os.clock() + 25,
+	}
+end
+
+local function vig_try_log_from_server_message(text)
+	if not vig_log_pending then
+		return
+	end
+	if os.clock() > vig_log_pending.expires then
+		vig_log_pending = nil
+		return
+	end
+
+	local msg = vig_chat_to_utf8(text)
+	if msg == "" then
+		return
+	end
+
+	local p = vig_log_pending
+	local function has_word(m, ...)
+		for i = 1, select("#", ...) do
+			local w = select(i, ...)
+			if w and m:find(w, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+
+	if p.action_type == DISCIPLINE_ACTION_GWARN then
+		if not has_word(msg, "спец", "Спец") or not has_word(msg, "выговор", "Выговор") then
+			return
+		end
+		if not has_word(msg, "причина", "Причина") then
+			return
+		end
+		if not vig_reason_loose_match(msg, p.reason) then
+			return
+		end
+		vig_append_log_raw_line(msg)
+		vig_log_pending = nil
+		return
+	end
+
+	if p.action_type == DISCIPLINE_ACTION_FIRE then
+		if not has_word(msg, "уволил", "Уволил") then
+			return
+		end
+		if not has_word(msg, "причина", "Причина") then
+			return
+		end
+		if not vig_reason_loose_match(msg, p.reason) then
+			return
+		end
+		local days = clamp_fire_ban_days(gwarn_binder.fire_ban_days)
+		vig_append_log_raw_line(msg .. " (" .. tostring(days) .. ")")
+		vig_log_pending = nil
+	end
+end
+
+local function vig_normalize_incoming_message(text)
+	if type(text) == "string" then
+		return text
+	end
+	if type(text) == "table" then
+		return tostring(text.text or text[1] or text.msg or text.message or "")
+	end
+	return tostring(text or "")
+end
+
 local function send_discipline_command(player_id, article_reason, action_type)
 	local id = tonumber(player_id)
 	local chat_line = build_discipline_chat_line(id, article_reason, action_type)
@@ -1494,8 +1663,12 @@ local function send_discipline_command(player_id, article_reason, action_type)
 		dms = clamp_binder_delay_ms(gwarn_binder.delay_ms_gwarn)
 	end
 	local lines = split_binder_script(script)
-	if #lines == 0 or not lua_thread or not lua_thread.create then
+	local function finish_discipline()
 		sampSendChatUtf8(chat_line)
+		vig_set_log_pending(action_type, id, reason)
+	end
+	if #lines == 0 or not lua_thread or not lua_thread.create then
+		finish_discipline()
 		return
 	end
 	lua_thread.create(function()
@@ -1514,7 +1687,7 @@ local function send_discipline_command(player_id, article_reason, action_type)
 				end
 			end
 		end
-		sampSendChatUtf8(chat_line)
+		finish_discipline()
 	end)
 end
 
@@ -1682,6 +1855,16 @@ local function try_intercept_outgoing_command(text)
 	return false
 end
 
+local gwarn_inner_onSendCommand
+local gwarn_inner_onServerMessage
+
+local function gwarn_onServerMessage(color, text)
+	vig_try_log_from_server_message(vig_normalize_incoming_message(text))
+	if gwarn_inner_onServerMessage then
+		return gwarn_inner_onServerMessage(color, text)
+	end
+end
+
 local function gwarn_onSendCommand(text)
 	if try_intercept_outgoing_command(text) then
 		return false
@@ -1699,6 +1882,10 @@ local function ensure_sampev_hooks()
 	if sampev.onSendCommand ~= gwarn_onSendCommand then
 		gwarn_inner_onSendCommand = sampev.onSendCommand
 		sampev.onSendCommand = gwarn_onSendCommand
+	end
+	if sampev.onServerMessage ~= gwarn_onServerMessage then
+		gwarn_inner_onServerMessage = sampev.onServerMessage
+		sampev.onServerMessage = gwarn_onServerMessage
 	end
 end
 
@@ -2115,6 +2302,7 @@ function welcome_gwarn_message()
 	print("[gwarnn] путь скрипта: " .. tostring(sp))
 	print("[gwarnn] папка данных: " .. get_spec_data_dir())
 	print("[gwarnn] VigArticles.json: " .. SPEC_JSON_PATH)
+	print("[gwarnn] лог наказаний: " .. get_discipline_log_path())
 	print("[gwarnn] манифест обновлений: " .. UPDATE_MANIFEST_URL)
 	if not sampev_ok then
 		print("[gwarnn] samp.events нет — работает только sampRegisterChatCommand")
