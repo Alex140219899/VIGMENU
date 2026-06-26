@@ -1743,7 +1743,9 @@ local function vig_render_discipline_log_viewer()
 			if date_hit or #filtered > 0 then
 				if imgui.CollapsingHeader(im_utf8(sec.date .. "##logdt_" .. i)) then
 					for _, ent in ipairs(filtered) do
+						vig_push_content_text_wrap()
 						imgui.TextWrapped(im_utf8(ent))
+						vig_pop_content_text_wrap()
 					end
 				end
 				shown_dates = shown_dates + 1
@@ -2106,6 +2108,64 @@ function count_lines_in_text(text, max_length)
 	return #lines
 end
 
+local function vig_text_width_utf8(text)
+	local ok, sz = pcall(function()
+		return imgui.CalcTextSize(im_utf8(tostring(text or "")))
+	end)
+	if ok and sz then
+		return sz.x, sz.y
+	end
+	return 0, 16 * custom_dpi
+end
+
+local function vig_wrap_text_for_width(text, max_width_px)
+	text = tostring(text or "")
+	max_width_px = math.max(80, max_width_px or 200)
+	local lines = {}
+	local current_line = ""
+	for word in text:gmatch("%S+") do
+		local candidate = current_line == "" and word or (current_line .. " " .. word)
+		local w = vig_text_width_utf8(candidate)
+		if w > max_width_px and current_line ~= "" then
+			lines[#lines + 1] = current_line
+			current_line = word
+		elseif w > max_width_px then
+			lines[#lines + 1] = word
+			current_line = ""
+		else
+			current_line = candidate
+		end
+	end
+	if current_line ~= "" then
+		lines[#lines + 1] = current_line
+	end
+	if #lines == 0 then
+		lines[1] = ""
+	end
+	local wrapped = table.concat(lines, "\n")
+	local _, text_h = vig_text_width_utf8(wrapped)
+	if text_h <= 0 then
+		local max_chars = math.max(16, math.floor(max_width_px / (8 * custom_dpi)))
+		wrapped = split_text_into_lines(text, max_chars)
+		text_h = count_lines_in_text(text, max_chars) * 16 * custom_dpi
+	end
+	return wrapped, #lines, text_h
+end
+
+local function vig_push_content_text_wrap()
+	local wrap_x = imgui.GetCursorPosX() + vig_imgui_content_w()
+	if imgui.PushTextWrapPos then
+		imgui.PushTextWrapPos(wrap_x)
+	end
+	return wrap_x
+end
+
+local function vig_pop_content_text_wrap()
+	if imgui.PopTextWrapPos then
+		imgui.PopTextWrapPos()
+	end
+end
+
 function imgui.GetMiddleButtonX(count)
 	local width = imgui.GetWindowContentRegionWidth()
 	local space = imgui.GetStyle().ItemSpacing.x
@@ -2324,13 +2384,16 @@ function register_spec_imgui()
 										reason_label = "без основания"
 									end
 									local row_title = "Статья: " .. reason_label .. "\n" .. tostring(t)
+									local btn_w = imgui.GetMiddleButtonX(1)
+									local wrapped_title, _, title_h = vig_wrap_text_for_width(
+										row_title,
+										math.max(120, btn_w - 12 * custom_dpi)
+									)
+									local btn_h = math.max(28 * custom_dpi, title_h + 10 * custom_dpi)
 									if
 										imgui.Button(
-											"> " .. im_utf8(split_text_into_lines(row_title, 85)) .. "##" .. index,
-											imgui.ImVec2(
-												imgui.GetMiddleButtonX(1),
-												(16 * count_lines_in_text(row_title, 85)) * custom_dpi
-											)
+											"> " .. im_utf8(wrapped_title) .. "##" .. index,
+											imgui.ImVec2(btn_w, btn_h)
 										)
 									then
 										imgui.OpenPopup(popup_id)
@@ -2385,7 +2448,9 @@ function register_spec_imgui()
 											im_utf8("Статья: ")
 												.. im_utf8(item.reason)
 										)
+										vig_push_content_text_wrap()
 										imgui.TextWrapped(im_utf8(item.text))
+										vig_pop_content_text_wrap()
 										imgui.Separator()
 										local btn_w = imgui.GetMiddleButtonX(3)
 										local btn_h = 28 * custom_dpi
