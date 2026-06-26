@@ -424,6 +424,11 @@ local function vig_query_matches(text, query)
 	return ok and hit
 end
 
+local function vig_imgui_content_w(min_w)
+	min_w = min_w or 120
+	return math.max(min_w, imgui.GetContentRegionAvail().x)
+end
+
 local function vig_render_ogk_staff_list()
 	if not imgui.CollapsingHeader(im_utf8("Сотрудники ОГК##binder_ogk")) then
 		return
@@ -435,7 +440,7 @@ local function vig_render_ogk_staff_list()
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_ogk_search, 256)
-	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(490 * custom_dpi, 200 * custom_dpi), true)
+	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(vig_imgui_content_w(), 200 * custom_dpi), true)
 	local last_role = nil
 	local shown = 0
 	for _, entry in ipairs(OGK_STAFF) do
@@ -1714,7 +1719,7 @@ local function vig_render_discipline_log_viewer()
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
-	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(490 * custom_dpi, 220 * custom_dpi), true)
+	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(vig_imgui_content_w(), 220 * custom_dpi), true)
 	local sections = vig_parse_discipline_log_sections()
 	if #sections == 0 then
 		imgui.TextWrapped(
@@ -2159,11 +2164,11 @@ function register_spec_imgui()
 			end
 			imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 2, sizeY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
 			imgui.SetNextWindowSize(imgui.ImVec2(600 * custom_dpi, 413 * custom_dpi), imgui.Cond.FirstUseEver)
-			imgui.Begin(
-				im_utf8("VigMenu (/" .. GWARN_MENU_CMD .. ")##spec_menu"),
-				SpecMenu.Window,
-				imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoResize
+			imgui.SetNextWindowSizeConstraints(
+				imgui.ImVec2(380 * custom_dpi, 280 * custom_dpi),
+				imgui.ImVec2(sizeX, sizeY)
 			)
+			imgui.Begin(im_utf8("VigMenu (/" .. GWARN_MENU_CMD .. ")##spec_menu"), SpecMenu.Window, imgui.WindowFlags.NoCollapse)
 			if not is_valid_target_id(spec_target_id) then
 				if not spec_menu_warned_invalid then
 					sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Игрок не в сети или неверный ID.", message_color)
@@ -2225,14 +2230,12 @@ function register_spec_imgui()
 					)
 					end
 				end
-				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 560 * custom_dpi), imgui.Cond.Appearing)
-				if
-					imgui.BeginPopupModal(
-						"##gwarn_binder_modal",
-						nil,
-						imgui.WindowFlags.NoResize
-					)
-				then
+				imgui.SetNextWindowSizeConstraints(
+					imgui.ImVec2(400 * custom_dpi, 420 * custom_dpi),
+					imgui.ImVec2(sizeX, sizeY)
+				)
+				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 560 * custom_dpi), imgui.Cond.FirstUseEver)
+				if imgui.BeginPopupModal("##gwarn_binder_modal", nil, imgui.WindowFlags.NoCollapse) then
 					if imgui.CollapsingHeader(im_utf8("Спец. выговор##binder_sec_gwarn")) then
 						imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
 						imgui.InputText("##binder_cmd_gwarn", SpecBinderUi.buf_cmd_gwarn, 64)
@@ -2245,7 +2248,7 @@ function register_spec_imgui()
 							"##binder_script_gwarn",
 							SpecBinderUi.buf_script_gwarn,
 							8192,
-							imgui.ImVec2(490 * custom_dpi, 140 * custom_dpi)
+							imgui.ImVec2(vig_imgui_content_w(), 140 * custom_dpi)
 						)
 					end
 					if imgui.CollapsingHeader(im_utf8("Увольнение##binder_sec_fire")) then
@@ -2262,7 +2265,7 @@ function register_spec_imgui()
 							"##binder_script_fire",
 							SpecBinderUi.buf_script_fire,
 							8192,
-							imgui.ImVec2(490 * custom_dpi, 140 * custom_dpi)
+							imgui.ImVec2(vig_imgui_content_w(), 140 * custom_dpi)
 						)
 					end
 					vig_render_ogk_staff_list()
@@ -2294,6 +2297,8 @@ function register_spec_imgui()
 					imgui.EndPopup()
 				end
 				imgui.Separator()
+				local list_avail = imgui.GetContentRegionAvail()
+				imgui.BeginChild("##spec_articles_scroll", imgui.ImVec2(list_avail.x, list_avail.y), true)
 				local input_decoded = normalize_search_input()
 				for chapter_idx, chapter in ipairs(articles_data) do
 					local items_t = chapter_items(chapter)
@@ -2421,6 +2426,7 @@ function register_spec_imgui()
 						end
 					end
 				end
+				imgui.EndChild()
 			end
 			imgui.End()
 		end
