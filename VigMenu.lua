@@ -625,7 +625,7 @@ local function download_url_to_file_sync(dest, url, timeout_sec)
 		)
 		pcall(
 			sampAddChatMessageUtf8,
-			"{009EFF}[gwarnn]{ffffff} Таймаут загрузки. С raw GitHub из игры часто так (сеть/регион). Скрипт пробует зеркало jsDelivr — обновите VigMenu.lua. Или положите VigArticles.json вручную в moonloader/VigMenu/",
+			"{009EFF}[Vigmenu]{ffffff} Таймаут загрузки. С raw GitHub из игры часто так (сеть/регион). Скрипт пробует зеркало jsDelivr — обновите VigMenu.lua. Или положите VigArticles.json вручную в moonloader/VigMenu/",
 			message_color
 		)
 		pcall(os.remove, dest)
@@ -883,7 +883,7 @@ local function start_download_script_thread()
 	end
 	local url = UpdateUi.script_url
 	if url == "" then
-		sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} В манифесте нет update_url.", message_color)
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} В манифесте нет update_url.", message_color)
 		return
 	end
 	local sp = thisScript().path
@@ -902,7 +902,7 @@ local function start_download_script_thread()
 		local body, new_ver = vig_download_best_script(script_urls, tmp, local_v, manifest_v)
 		if not body or body == "" then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Не удалось скачать VigMenu.lua v."
+				"{009EFF}[Vigmenu]{ffffff} Не удалось скачать VigMenu.lua v."
 					.. manifest_v
 					.. "+ (GitHub недоступен, jsDelivr отдал старый кэш). Замените .lua вручную с GitHub.",
 				message_color
@@ -916,7 +916,7 @@ local function start_download_script_thread()
 			out = io.open(target:gsub("\\", "/"), "wb")
 		end
 		if not out then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Не удалось записать .lua (права?).", message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось записать .lua (права?).", message_color)
 			UpdateUi.busy = false
 			return
 		end
@@ -928,17 +928,17 @@ local function start_download_script_thread()
 		pcall(os.remove, tmp)
 		if new_ver and new_ver ~= "" then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Записан VigMenu.lua, версия в файле: "
+				"{009EFF}[Vigmenu]{ffffff} Записан VigMenu.lua, версия в файле: "
 					.. new_ver
 					.. ". Перезагрузка…",
 				message_color
 			)
 		else
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Скрипт записан. Перезагрузка…", message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Скрипт записан. Перезагрузка…", message_color)
 		end
 		local mc = last_manifest_cache
 		if mc and type(mc.update_info) == "string" and vig_version_trim(mc.update_info) ~= "" then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. mc.update_info, message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. mc.update_info, message_color)
 		end
 		UpdateUi.busy = false
 		wait(900)
@@ -951,14 +951,14 @@ end
 local function vig_run_github_update_from_settings(opts)
 	opts = type(opts) == "table" and opts or {}
 	if UpdateUi.busy then
-		sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Подождите, идёт загрузка…", message_color)
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Подождите, идёт загрузка…", message_color)
 		return
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
 		local m, err = fetch_update_manifest()
 		if not m then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Не удалось получить VigUpdate.json: " .. tostring(err), message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось получить VigUpdate.json: " .. tostring(err), message_color)
 			UpdateUi.busy = false
 			return
 		end
@@ -971,7 +971,7 @@ local function vig_run_github_update_from_settings(opts)
 			local rem = vig_version_trim(m.current_version or "")
 			if vig_compare_versions(loc, rem) > 0 then
 				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} У вас новее: v."
+					"{009EFF}[Vigmenu]{ffffff} У вас новее: v."
 						.. loc
 						.. " | в VigUpdate.json: v."
 						.. rem
@@ -980,7 +980,7 @@ local function vig_run_github_update_from_settings(opts)
 				)
 			else
 				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Актуально. Скрипт у вас: "
+					"{009EFF}[Vigmenu]{ffffff} Актуально. Скрипт у вас: "
 						.. loc
 						.. " | в VigUpdate.json: "
 						.. rem
@@ -994,7 +994,7 @@ local function vig_run_github_update_from_settings(opts)
 		if UpdateUi.need_articles then
 			local url = UpdateUi.articles_url
 			if url == "" then
-				sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} В манифесте нет articles_url.", message_color)
+				sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} В манифесте нет articles_url.", message_color)
 			else
 				local tmp = (worked_dir .. "/.gwarnn_new_articles.json"):gsub("\\", "/")
 				if doesFileExist(tmp) then
@@ -1029,17 +1029,17 @@ local function vig_run_github_update_from_settings(opts)
 								write_local_articles_version(tostring(m.articles_version))
 							end
 							load_articles(true)
-							sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} VigArticles.json обновлён.", message_color)
+							sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} VigArticles.json обновлён.", message_color)
 							if type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
-								sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.articles_info, message_color)
+								sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.articles_info, message_color)
 							end
 						else
-							sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Не удалось записать VigArticles.json.", message_color)
+							sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось записать VigArticles.json.", message_color)
 						end
 					end
 				else
 					sampAddChatMessageUtf8(
-						"{009EFF}[gwarnn]{ffffff} Ошибка скачивания VigArticles.json (GitHub и зеркало).",
+						"{009EFF}[Vigmenu]{ffffff} Ошибка скачивания VigArticles.json (GitHub и зеркало).",
 						message_color
 					)
 				end
@@ -1058,14 +1058,14 @@ end
 --- Только проверка VigUpdate.json — в чат версии и поля update_info / articles_info из манифеста.
 local function vig_check_updates_chat_only()
 	if UpdateUi.busy then
-		sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Дождитесь окончания операции.", message_color)
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Дождитесь окончания операции.", message_color)
 		return
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
 		local m, err = fetch_update_manifest()
 		if not m then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Проверка: " .. tostring(err), message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Проверка: " .. tostring(err), message_color)
 			UpdateUi.busy = false
 			return
 		end
@@ -1075,7 +1075,7 @@ local function vig_check_updates_chat_only()
 		if not UpdateUi.need_script and not UpdateUi.need_articles then
 			if vig_compare_versions(loc, rem) > 0 then
 				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} CDN/GitHub отдал старый VigUpdate.json (v."
+					"{009EFF}[Vigmenu]{ffffff} CDN/GitHub отдал старый VigUpdate.json (v."
 						.. rem
 						.. "). У вас v."
 						.. loc
@@ -1084,7 +1084,7 @@ local function vig_check_updates_chat_only()
 				)
 			else
 				sampAddChatMessageUtf8(
-					"{009EFF}[gwarnn]{ffffff} Обновлений нет. Скрипт у вас: "
+					"{009EFF}[Vigmenu]{ffffff} Обновлений нет. Скрипт у вас: "
 						.. loc
 						.. " | в манифесте: "
 						.. rem
@@ -1097,7 +1097,7 @@ local function vig_check_updates_chat_only()
 		end
 		if UpdateUi.need_script then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Доступно обновление скрипта: у вас v."
+				"{009EFF}[Vigmenu]{ffffff} Доступно обновление скрипта: у вас v."
 					.. loc
 					.. ", на GitHub v."
 					.. rem
@@ -1105,17 +1105,17 @@ local function vig_check_updates_chat_only()
 				message_color
 			)
 			if type(m.update_info) == "string" and vig_version_trim(m.update_info) ~= "" then
-				sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.update_info, message_color)
+				sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.update_info, message_color)
 			end
 		end
 		if UpdateUi.need_articles and not UpdateUi.need_script then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Доступно обновление только статей VigArticles.json.",
+				"{009EFF}[Vigmenu]{ffffff} Доступно обновление только статей VigArticles.json.",
 				message_color
 			)
 		end
 		if UpdateUi.need_articles and type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.articles_info, message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.articles_info, message_color)
 		end
 		UpdateUi.busy = false
 	end)
@@ -1143,7 +1143,7 @@ local function vig_delayed_update_hint_after_welcome()
 		local rem = vig_version_trim(m.current_version or "")
 		if UpdateUi.need_script then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Доступно обновление скрипта (у вас v."
+				"{009EFF}[Vigmenu]{ffffff} Доступно обновление скрипта (у вас v."
 					.. loc
 					.. ", на GitHub v."
 					.. rem
@@ -1151,16 +1151,16 @@ local function vig_delayed_update_hint_after_welcome()
 				message_color
 			)
 			if type(m.update_info) == "string" and vig_version_trim(m.update_info) ~= "" then
-				sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.update_info, message_color)
+				sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.update_info, message_color)
 			end
 		elseif UpdateUi.need_articles then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Доступно обновление статей VigArticles.json. Настройки → «Обновить с GitHub».",
+				"{009EFF}[Vigmenu]{ffffff} Доступно обновление статей VigArticles.json. Настройки → «Обновить с GitHub».",
 				message_color
 			)
 		end
 		if UpdateUi.need_articles and type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff}" .. m.articles_info, message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.articles_info, message_color)
 		end
 	end)
 end
@@ -1886,7 +1886,7 @@ load_articles = function(quiet)
 		articles_data = {}
 		if not quiet then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Нет VigArticles.json. Путь: " .. SPEC_JSON_PATH,
+				"{009EFF}[Vigmenu]{ffffff} Нет VigArticles.json. Путь: " .. SPEC_JSON_PATH,
 				message_color
 			)
 		end
@@ -1897,7 +1897,7 @@ load_articles = function(quiet)
 		articles_data = {}
 		if not quiet then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Не удалось прочитать JSON: " .. tostring(err),
+				"{009EFF}[Vigmenu]{ffffff} Не удалось прочитать JSON: " .. tostring(err),
 				message_color
 			)
 		end
@@ -1908,7 +1908,7 @@ load_articles = function(quiet)
 	if not contents or #contents == 0 then
 		articles_data = {}
 		if not quiet then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} VigArticles.json пуст.", message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} VigArticles.json пуст.", message_color)
 		end
 		return
 	end
@@ -1918,7 +1918,7 @@ load_articles = function(quiet)
 		normalize_articles_root(articles_data)
 		if not quiet then
 			sampAddChatMessageUtf8(
-				"{009EFF}[gwarnn]{ffffff} Загружено разделов: "
+				"{009EFF}[Vigmenu]{ffffff} Загружено разделов: "
 					.. #articles_data
 					.. " | "
 					.. SPEC_JSON_PATH,
@@ -1928,7 +1928,7 @@ load_articles = function(quiet)
 	else
 		articles_data = {}
 		if not quiet then
-			sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Ошибка разбора JSON.", message_color)
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Ошибка разбора JSON.", message_color)
 		end
 	end
 end
@@ -1950,14 +1950,14 @@ local function process_gwarn_menu_command_arg(arg)
 	arg = arg and arg:match("^%s*(.-)%s*$") or ""
 	if arg == "" then
 		sampAddChatMessageUtf8(
-			"{009EFF}[gwarnn]{ffffff} Используйте /" .. GWARN_MENU_CMD .. " [id игрока]",
+			"{009EFF}[Vigmenu]{ffffff} Используйте /" .. GWARN_MENU_CMD .. " [id игрока]",
 			message_color
 		)
 		return
 	end
 	if not is_valid_target_id(arg) then
 		sampAddChatMessageUtf8(
-			"{009EFF}[gwarnn]{ffffff} Неверный ID или игрок не в сети (0–999).",
+			"{009EFF}[Vigmenu]{ffffff} Неверный ID или игрок не в сети (0–999).",
 			message_color
 		)
 		return
@@ -1972,7 +1972,7 @@ local function process_gwarn_menu_command_arg(arg)
 	end
 	if not spec_imgui_ready then
 		sampAddChatMessageUtf8(
-			"{009EFF}[gwarnn]{ffffff} Ошибка меню ImGui (см. консоль MoonLoader).",
+			"{009EFF}[Vigmenu]{ffffff} Ошибка меню ImGui (см. консоль MoonLoader).",
 			message_color
 		)
 		return
@@ -2166,7 +2166,7 @@ function register_spec_imgui()
 			)
 			if not is_valid_target_id(spec_target_id) then
 				if not spec_menu_warned_invalid then
-					sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Игрок не в сети или неверный ID.", message_color)
+					sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Игрок не в сети или неверный ID.", message_color)
 					spec_menu_warned_invalid = true
 				end
 				imgui.TextWrapped(
@@ -2284,7 +2284,7 @@ function register_spec_imgui()
 					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(140 * custom_dpi, 28 * custom_dpi)) then
 						binder_ui_apply_to_runtime()
 						save_gwarn_binder_settings()
-						sampAddChatMessageUtf8("{009EFF}[gwarnn]{ffffff} Настройки отыгровки сохранены.", message_color)
+						sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Настройки отыгровки сохранены.", message_color)
 						imgui.CloseCurrentPopup()
 					end
 					imgui.SameLine()
@@ -2471,7 +2471,7 @@ function welcome_gwarn_message()
 	local sp = thisScript and thisScript().path or "?"
 	local ver_show = vig_read_script_version_from_path(sp) or SCRIPT_VERSION_TEXT
 	sampAddChatMessageUtf8(
-		"{009EFF}[gwarnn]{ffffff} Создатель AlexBuhoi | версия "
+		"{009EFF}[Vigmenu]{ffffff} Создатель AlexBuhoi | версия "
 			.. ver_show
 			.. " | FBI/INSD/DRAKE",
 		message_color
