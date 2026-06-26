@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.4")
+script_version("5.2.5")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.4"
+local SCRIPT_VERSION_TEXT = "5.2.5"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2296,6 +2296,11 @@ function register_spec_imgui()
 				)
 				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 560 * custom_dpi), imgui.Cond.FirstUseEver)
 				if imgui.BeginPopupModal("##gwarn_binder_modal", nil, imgui.WindowFlags.NoCollapse) then
+					imgui.TextColored(
+						imgui.ImVec4(0.55, 0.75, 1.0, 1.0),
+						im_utf8("Активная версия: v." .. get_local_script_version())
+					)
+					imgui.Separator()
 					if imgui.CollapsingHeader(im_utf8("Спец. выговор##binder_sec_gwarn")) then
 						imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
 						imgui.InputText("##binder_cmd_gwarn", SpecBinderUi.buf_cmd_gwarn, 64)
