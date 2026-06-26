@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.0")
+script_version("5.2.1")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.0"
+local SCRIPT_VERSION_TEXT = "5.2.1"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -344,6 +344,8 @@ local SpecBinderUi = {
 	buf_fire_ban_days = imgui.new.char[8](),
 	buf_cmd_gwarn = imgui.new.char[64](),
 	buf_cmd_fire = imgui.new.char[64](),
+	buf_ogk_search = imgui.new.char[256](),
+	buf_log_search = imgui.new.char[256](),
 }
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
@@ -376,11 +378,11 @@ local OGK_STAFF = {
 	{ role = "Федеральный Аудитор", name = "Harumi Carbone" },
 	{ role = "Федеральный Аудитор", name = "Dmitriy Muller" },
 	{ role = "Федеральный Аудитор", name = "Jennifer Fox" },
-	{ role = "Федеральный Аудитор", name = "Set Reaver" },
+	{ role = "Федеральный Аудитор", name = "Вакантно" },
 	{ role = "Федеральный Аудитор", name = "Sophie Rein" },
 	{ role = "Окружной Аудитор", name = "Pasha Monasik" },
 	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Tom Pearl" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
 	{ role = "Окружной Аудитор", name = "Artem Savin" },
 	{ role = "Окружной Аудитор", name = "Sophie Rain" },
@@ -395,32 +397,67 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Mike Vendetta" },
 	{ role = "Помощник Аудитора", name = "Mark Devin" },
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Artiom Bounteiro" },
+	{ role = "Помощник Аудитора", name = "Ludwig Bounteiro" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
+
+local function normalize_charbuf_input(buf, max_bytes)
+	local raw = ffi.string(buf, max_bytes)
+	local z = raw:find("\0", 1, true)
+	if z then
+		raw = raw:sub(1, z - 1)
+	end
+	return (raw:gsub("%z", "")):match("^%s*(.-)%s*$") or ""
+end
+
+local function vig_query_matches(text, query)
+	query = tostring(query or ""):match("^%s*(.-)%s*$") or ""
+	if query == "" then
+		return true
+	end
+	text = tostring(text or "")
+	local ok, hit = pcall(function()
+		return utf8_rupper(text):find(utf8_rupper(query), 1, true) ~= nil
+	end)
+	return ok and hit
+end
 
 local function vig_render_ogk_staff_list()
 	if not imgui.CollapsingHeader(im_utf8("Сотрудники ОГК##binder_ogk")) then
 		return
 	end
-	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(490 * custom_dpi, 220 * custom_dpi), true)
+	imgui.InputTextWithHint(
+		"##ogk_search",
+		im_utf8("Поиск (должность / ФИО)"),
+		SpecBinderUi.buf_ogk_search,
+		256
+	)
+	local q = normalize_charbuf_input(SpecBinderUi.buf_ogk_search, 256)
+	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(490 * custom_dpi, 200 * custom_dpi), true)
 	local last_role = nil
+	local shown = 0
 	for _, entry in ipairs(OGK_STAFF) do
-		if entry.role ~= last_role then
-			if last_role then
-				imgui.Spacing()
+		if vig_query_matches(entry.name, q) or vig_query_matches(entry.role, q) then
+			if entry.role ~= last_role then
+				if last_role then
+					imgui.Spacing()
+				end
+				imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8(entry.role))
+				last_role = entry.role
 			end
-			imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8(entry.role))
-			last_role = entry.role
+			local vacant = entry.name == "Вакантно"
+			if vacant then
+				imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.55, 1.0), im_utf8("  — Вакантно"))
+			else
+				imgui.Text(im_utf8("  — " .. entry.name))
+			end
+			shown = shown + 1
 		end
-		local vacant = entry.name == "Вакантно"
-		if vacant then
-			imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.55, 1.0), im_utf8("  — Вакантно"))
-		else
-			imgui.Text(im_utf8("  — " .. entry.name))
-		end
+	end
+	if shown == 0 then
+		imgui.TextColored(imgui.ImVec4(0.55, 0.55, 0.6, 1.0), im_utf8("Ничего не найдено."))
 	end
 	imgui.EndChild()
 end
@@ -1639,6 +1676,81 @@ local function vig_append_log_raw_line(line)
 	wf:close()
 end
 
+local function vig_parse_discipline_log_sections()
+	local path = get_discipline_log_path()
+	if not doesFileExist(path) then
+		return {}
+	end
+	local rf = io.open(path, "r")
+	if not rf then
+		return {}
+	end
+	local content = rf:read("*a") or ""
+	rf:close()
+	local sections = {}
+	local current = nil
+	for line in content:gmatch("[^\r\n]+") do
+		line = line:gsub("^%s+", ""):gsub("%s+$", "")
+		if line ~= "" then
+			if line:match("^%d%d%.%d%d%.%d%d%d%d$") then
+				current = { date = line, entries = {} }
+				sections[#sections + 1] = current
+			elseif current then
+				current.entries[#current.entries + 1] = line
+			end
+		end
+	end
+	return sections
+end
+
+local function vig_render_discipline_log_viewer()
+	if not imgui.CollapsingHeader(im_utf8("Лог наказаний##binder_log")) then
+		return
+	end
+	imgui.InputTextWithHint(
+		"##log_search",
+		im_utf8("Поиск по логу (дата, ник, статья…)"),
+		SpecBinderUi.buf_log_search,
+		256
+	)
+	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
+	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(490 * custom_dpi, 220 * custom_dpi), true)
+	local sections = vig_parse_discipline_log_sections()
+	if #sections == 0 then
+		imgui.TextWrapped(
+			im_utf8("Лог пуст. Записи появятся после выдачи спец. выговора или увольнения.")
+		)
+	else
+		local shown_dates = 0
+		for i = #sections, 1, -1 do
+			local sec = sections[i]
+			local date_hit = vig_query_matches(sec.date, q)
+			local filtered = {}
+			if date_hit then
+				filtered = sec.entries
+			else
+				for _, ent in ipairs(sec.entries) do
+					if vig_query_matches(ent, q) then
+						filtered[#filtered + 1] = ent
+					end
+				end
+			end
+			if date_hit or #filtered > 0 then
+				if imgui.CollapsingHeader(im_utf8(sec.date .. "##logdt_" .. i)) then
+					for _, ent in ipairs(filtered) do
+						imgui.TextWrapped(im_utf8(ent))
+					end
+				end
+				shown_dates = shown_dates + 1
+			end
+		end
+		if shown_dates == 0 then
+			imgui.TextColored(imgui.ImVec4(0.55, 0.55, 0.6, 1.0), im_utf8("Ничего не найдено."))
+		end
+	end
+	imgui.EndChild()
+end
+
 local function vig_set_log_pending(action_type, player_id, article_reason)
 	vig_log_pending = {
 		action_type = action_type,
@@ -2113,7 +2225,7 @@ function register_spec_imgui()
 					)
 					end
 				end
-				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 520 * custom_dpi), imgui.Cond.Appearing)
+				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 560 * custom_dpi), imgui.Cond.Appearing)
 				if
 					imgui.BeginPopupModal(
 						"##gwarn_binder_modal",
@@ -2154,6 +2266,7 @@ function register_spec_imgui()
 						)
 					end
 					vig_render_ogk_staff_list()
+					vig_render_discipline_log_viewer()
 					imgui.Separator()
 					imgui.TextWrapped(im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее."))
 					if UpdateUi.busy then
