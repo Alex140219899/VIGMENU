@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.5")
+script_version("5.2.6")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.5"
+local SCRIPT_VERSION_TEXT = "5.2.6"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -427,6 +427,30 @@ end
 local function vig_imgui_content_w(min_w)
 	min_w = min_w or 120
 	return math.max(min_w, imgui.GetContentRegionAvail().x)
+end
+
+local function vig_push_content_text_wrap()
+	if not imgui.PushTextWrapPos then
+		return false
+	end
+	local avail = vig_imgui_content_w()
+	if avail <= 0 then
+		return false
+	end
+	local wrap_x = imgui.GetCursorPosX() + avail
+	local ok = pcall(function()
+		imgui.PushTextWrapPos(wrap_x)
+	end)
+	return ok
+end
+
+local function vig_pop_content_text_wrap(pushed)
+	if pushed == false then
+		return
+	end
+	if imgui.PopTextWrapPos then
+		pcall(imgui.PopTextWrapPos)
+	end
 end
 
 local function vig_render_ogk_staff_list()
@@ -1743,9 +1767,8 @@ local function vig_render_discipline_log_viewer()
 			if date_hit or #filtered > 0 then
 				if imgui.CollapsingHeader(im_utf8(sec.date .. "##logdt_" .. i)) then
 					for _, ent in ipairs(filtered) do
-						vig_push_content_text_wrap()
 						imgui.TextWrapped(im_utf8(ent))
-						vig_pop_content_text_wrap()
+						imgui.Spacing()
 					end
 				end
 				shown_dates = shown_dates + 1
@@ -2152,20 +2175,6 @@ local function vig_wrap_text_for_width(text, max_width_px)
 	return wrapped, #lines, text_h
 end
 
-local function vig_push_content_text_wrap()
-	local wrap_x = imgui.GetCursorPosX() + vig_imgui_content_w()
-	if imgui.PushTextWrapPos then
-		imgui.PushTextWrapPos(wrap_x)
-	end
-	return wrap_x
-end
-
-local function vig_pop_content_text_wrap()
-	if imgui.PopTextWrapPos then
-		imgui.PopTextWrapPos()
-	end
-end
-
 function imgui.GetMiddleButtonX(count)
 	local width = imgui.GetWindowContentRegionWidth()
 	local space = imgui.GetStyle().ItemSpacing.x
@@ -2453,9 +2462,9 @@ function register_spec_imgui()
 											im_utf8("Статья: ")
 												.. im_utf8(item.reason)
 										)
-										vig_push_content_text_wrap()
+										local pushed_wrap = vig_push_content_text_wrap()
 										imgui.TextWrapped(im_utf8(item.text))
-										vig_pop_content_text_wrap()
+										vig_pop_content_text_wrap(pushed_wrap)
 										imgui.Separator()
 										local btn_w = imgui.GetMiddleButtonX(3)
 										local btn_h = 28 * custom_dpi
