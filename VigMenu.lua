@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.6")
+script_version("5.2.7")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.6"
+local SCRIPT_VERSION_TEXT = "5.2.7"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -378,19 +378,19 @@ local OGK_STAFF = {
 	{ role = "Федеральный Аудитор", name = "Harumi Carbone" },
 	{ role = "Федеральный Аудитор", name = "Dmitriy Muller" },
 	{ role = "Федеральный Аудитор", name = "Jennifer Fox" },
-	{ role = "Федеральный Аудитор", name = "Вакантно" },
+	{ role = "Федеральный Аудитор", name = "Huston Sweet" },
 	{ role = "Федеральный Аудитор", name = "Sophie Rein" },
 	{ role = "Окружной Аудитор", name = "Pasha Monasik" },
 	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Вакантно" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
-	{ role = "Окружной Аудитор", name = "Artem Savin" },
-	{ role = "Окружной Аудитор", name = "Sophie Rain" },
-	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
-	{ role = "Помощник Аудитора", name = "Jenya Undertaker" },
+	{ role = "Помощник Аудитора", name = "Kredo Bank" },
 	{ role = "Помощник Аудитора", name = "Soul Kristian" },
 	{ role = "Помощник Аудитора", name = "Luis Love" },
-	{ role = "Помощник Аудитора", name = "Christofer Kolumb" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
@@ -399,7 +399,7 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
 	{ role = "Помощник Аудитора", name = "Artiom Bounteiro" },
 	{ role = "Помощник Аудитора", name = "Ludwig Bounteiro" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Kama Pullya" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
 
@@ -451,6 +451,22 @@ local function vig_pop_content_text_wrap(pushed)
 	if imgui.PopTextWrapPos then
 		pcall(imgui.PopTextWrapPos)
 	end
+end
+
+local function vig_copy_text_to_clipboard(text)
+	text = tostring(text or ""):gsub("\r", ""):gsub("\n", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	if text == "" then
+		return false
+	end
+	if imgui.SetClipboardText then
+		local ok = pcall(function()
+			imgui.SetClipboardText(im_utf8(text))
+		end)
+		if ok then
+			return true
+		end
+	end
+	return false
 end
 
 local function vig_render_ogk_staff_list()
@@ -1766,7 +1782,20 @@ local function vig_render_discipline_log_viewer()
 			end
 			if date_hit or #filtered > 0 then
 				if imgui.CollapsingHeader(im_utf8(sec.date .. "##logdt_" .. i)) then
-					for _, ent in ipairs(filtered) do
+					for j, ent in ipairs(filtered) do
+						local copy_id = "##logcpy_" .. i .. "_" .. j
+						if imgui.SmallButton(im_utf8("Коп." .. copy_id)) then
+							if vig_copy_text_to_clipboard(ent) then
+								sampAddChatMessageUtf8(
+									"{009EFF}[Vigmenu]{ffffff} Строка лога скопирована в буфер обмена.",
+									message_color
+								)
+							end
+						end
+						if imgui.IsItemHovered() then
+							imgui.SetTooltip(im_utf8("Копировать строку в буфер обмена"))
+						end
+						imgui.SameLine(0, 6 * custom_dpi)
 						imgui.TextWrapped(im_utf8(ent))
 						imgui.Spacing()
 					end
