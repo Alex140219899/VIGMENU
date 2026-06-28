@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.13")
+script_version("5.2.14")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.13"
+local SCRIPT_VERSION_TEXT = "5.2.14"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -775,7 +775,9 @@ local function vig_probe_remote_script_max_version(update_url)
 	end
 	local urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, update_url, "")
 	local best_ver = nil
-	for _, su in ipairs(urls) do
+	local probe_limit = math.min(2, #urls)
+	for i = 1, probe_limit do
+		local su = urls[i]
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
 		end
@@ -815,7 +817,14 @@ local function vig_manifest_with_fresh_script_version(m)
 	if manifest_v ~= "" and vig_compare_versions(manifest_v, local_v) > 0 then
 		return m
 	end
-	local probed = vig_probe_remote_script_max_version(update_url)
+	local probed = nil
+	local probe_ok, probe_err = pcall(function()
+		probed = vig_probe_remote_script_max_version(update_url)
+	end)
+	if not probe_ok then
+		print("[gwarnn] probe VigMenu.lua: " .. tostring(probe_err))
+		return m
+	end
 	if not probed or probed == "" then
 		return m
 	end
@@ -962,6 +971,9 @@ local UpdateUi = {
 	changelog_articles = "",
 	script_url = "",
 	articles_url = "",
+	pending_check = false,
+	pending_update = false,
+	pending_update_opts = nil,
 }
 
 -- Forward declaration: используется в функции обновления, которая объявлена выше фактической реализации.
@@ -1021,6 +1033,8 @@ local function start_download_script_thread()
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
+		wait(0)
+		local ok_run, err_run = pcall(function()
 		local tmp = (worked_dir .. "/.gwarnn_new.lua"):gsub("\\", "/")
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
@@ -1072,7 +1086,51 @@ local function start_download_script_thread()
 		UpdateUi.busy = false
 		wait(900)
 		try_reload_script()
+		end)
+		if not ok_run then
+			print("[gwarnn] ошибка скачивания скрипта: " .. tostring(err_run))
+			sampAddChatMessageUtf8(
+				"{009EFF}[Vigmenu]{ffffff} Ошибка скачивания скрипта (см. консоль MoonLoader).",
+				message_color
+			)
+			UpdateUi.busy = false
+		end
 	end)
+end
+
+--- Запуск обновления вне колбэка ImGui (кнопка во вкладках иначе крашит игру).
+local function vig_queue_github_check()
+	if UpdateUi.busy then
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Дождитесь окончания операции.", message_color)
+		return
+	end
+	UpdateUi.pending_check = true
+end
+
+local function vig_queue_github_update(opts)
+	if UpdateUi.busy then
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Подождите, идёт загрузка…", message_color)
+		return
+	end
+	UpdateUi.pending_update = true
+	UpdateUi.pending_update_opts = opts
+end
+
+local function vig_process_pending_update_actions()
+	if UpdateUi.busy then
+		return
+	end
+	if UpdateUi.pending_check then
+		UpdateUi.pending_check = false
+		vig_check_updates_chat_only()
+		return
+	end
+	if UpdateUi.pending_update then
+		local opts = UpdateUi.pending_update_opts
+		UpdateUi.pending_update = false
+		UpdateUi.pending_update_opts = nil
+		vig_run_github_update_from_settings(opts)
+	end
 end
 
 --- Одна кнопка «Обновить» в настройках: качает статьи (если нужно), затем скрипт (если нужно). Без отдельного окна ImGui.
@@ -1085,6 +1143,8 @@ local function vig_run_github_update_from_settings(opts)
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
+		wait(0)
+		local ok_run, err_run = pcall(function()
 		local m, err = fetch_update_manifest_resolved()
 		if not m then
 			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось получить VigUpdate.json: " .. tostring(err), message_color)
@@ -1181,6 +1241,15 @@ local function vig_run_github_update_from_settings(opts)
 		else
 			UpdateUi.busy = false
 		end
+		end)
+		if not ok_run then
+			print("[gwarnn] ошибка «Обновить с GitHub»: " .. tostring(err_run))
+			sampAddChatMessageUtf8(
+				"{009EFF}[Vigmenu]{ffffff} Ошибка обновления (см. консоль MoonLoader).",
+				message_color
+			)
+			UpdateUi.busy = false
+		end
 	end)
 end
 
@@ -1192,6 +1261,8 @@ local function vig_check_updates_chat_only()
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
+		wait(0)
+		local ok_run, err_run = pcall(function()
 		local m, err = fetch_update_manifest_resolved()
 		if not m then
 			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Проверка: " .. tostring(err), message_color)
@@ -1247,6 +1318,15 @@ local function vig_check_updates_chat_only()
 			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.articles_info, message_color)
 		end
 		UpdateUi.busy = false
+		end)
+		if not ok_run then
+			print("[gwarnn] ошибка «Проверить»: " .. tostring(err_run))
+			sampAddChatMessageUtf8(
+				"{009EFF}[Vigmenu]{ffffff} Ошибка проверки обновлений (см. консоль MoonLoader).",
+				message_color
+			)
+			UpdateUi.busy = false
+		end
 	end)
 end
 
@@ -1888,11 +1968,11 @@ local function vig_render_binder_update_tab()
 		imgui.Text(im_utf8("Идёт загрузка…"))
 	else
 		if imgui.Button(im_utf8("Проверить##vig_chk"), imgui.ImVec2(236 * custom_dpi, 30 * custom_dpi)) then
-			vig_check_updates_chat_only()
+			vig_queue_github_check()
 		end
 		imgui.SameLine()
 		if imgui.Button(im_utf8("Обновить с GitHub##vig_git_upd"), imgui.ImVec2(236 * custom_dpi, 30 * custom_dpi)) then
-			vig_run_github_update_from_settings()
+			vig_queue_github_update()
 		end
 	end
 end
@@ -1979,17 +2059,7 @@ end
 
 local function vig_render_binder_settings_tabs(scroll_h)
 	scroll_h = scroll_h or math.max(280 * custom_dpi, imgui.GetContentRegionAvail().y)
-	local tab_flags = 0
-	if imgui.TabBarFlags and imgui.TabBarFlags.FittingPolicyScroll then
-		tab_flags = imgui.TabBarFlags.FittingPolicyScroll
-	end
-	local tab_bar_ok = false
-	if tab_flags ~= 0 then
-		tab_bar_ok = imgui.BeginTabBar("##binder_tabs", tab_flags)
-	else
-		tab_bar_ok = imgui.BeginTabBar("##binder_tabs")
-	end
-	if tab_bar_ok then
+	if imgui.BeginTabBar("##binder_tabs") then
 		if imgui.BeginTabItem(im_utf8("Отыгровки##binder_tab_rp")) then
 			vig_render_binder_rp_tab(scroll_h)
 			imgui.EndTabItem()
@@ -2462,6 +2532,7 @@ function register_spec_imgui()
 			if not SpecMenu.Window[0] then
 				return
 			end
+			vig_process_pending_update_actions()
 			imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 2, sizeY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
 			imgui.SetNextWindowSize(imgui.ImVec2(600 * custom_dpi, 413 * custom_dpi), imgui.Cond.FirstUseEver)
 			imgui.SetNextWindowSizeConstraints(
@@ -2495,7 +2566,7 @@ function register_spec_imgui()
 					imgui.Text(im_utf8("Загрузка…"))
 				else
 					if imgui.Button(im_utf8("Скачать статьи с GitHub##empty_sync"), imgui.ImVec2(260 * custom_dpi, 30 * custom_dpi)) then
-						vig_run_github_update_from_settings({ force_articles = true })
+						vig_queue_github_update({ force_articles = true })
 					end
 				end
 				imgui.Separator()
