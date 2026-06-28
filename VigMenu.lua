@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.9")
+script_version("5.2.10")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.9"
+local SCRIPT_VERSION_TEXT = "5.2.10"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2450,10 +2450,25 @@ function register_spec_imgui()
 				)
 				imgui.SetNextWindowSize(imgui.ImVec2(520 * custom_dpi, 560 * custom_dpi), imgui.Cond.FirstUseEver)
 				if imgui.BeginPopupModal("##gwarn_binder_modal", nil, imgui.WindowFlags.NoCollapse) then
+					local close_sz = 22 * custom_dpi
+					local header_y = imgui.GetCursorPosY()
 					imgui.TextColored(
 						imgui.ImVec4(0.55, 0.75, 1.0, 1.0),
 						im_utf8("Активная версия: v." .. get_local_script_version())
 					)
+					imgui.SetCursorPos(
+						imgui.ImVec2(
+							math.max(8 * custom_dpi, imgui.GetWindowWidth() - close_sz - 8 * custom_dpi),
+							header_y
+						)
+					)
+					if imgui.Button(im_utf8("X##close_binder"), imgui.ImVec2(close_sz, close_sz)) then
+						imgui.CloseCurrentPopup()
+					end
+					if imgui.IsItemHovered() then
+						imgui.SetTooltip(im_utf8("Закрыть"))
+					end
+					imgui.SetCursorPosY(math.max(imgui.GetCursorPosY(), header_y + close_sz + 4 * custom_dpi))
 					imgui.Separator()
 					local footer_h = 44 * custom_dpi
 					local tab_scroll_h = math.max(240 * custom_dpi, imgui.GetContentRegionAvail().y - footer_h)
