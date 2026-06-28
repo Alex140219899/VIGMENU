@@ -1,6 +1,6 @@
 {
-  "current_version": "5.2.10",
-  "update_info": "Крестик закрытия в углу окна настроек",
+  "current_version": "5.2.11",
+  "update_info": "Вкладки в настройках, фикс лога, крестик закрытия, копирование строк",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
