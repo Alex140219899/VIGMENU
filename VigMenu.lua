@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.15")
+script_version("5.2.16")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.15"
+local SCRIPT_VERSION_TEXT = "5.2.16"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -432,6 +432,12 @@ local function vig_imgui_content_w(min_w)
 	return math.max(min_w, imgui.GetContentRegionAvail().x)
 end
 
+local function vig_binder_tab_inner_height(panel_h, search_row_h)
+	local tab_bar_h = 30 * custom_dpi
+	search_row_h = search_row_h or 0
+	return math.max(100 * custom_dpi, panel_h - tab_bar_h - search_row_h)
+end
+
 local function vig_push_content_text_wrap()
 	if not imgui.PushTextWrapPos then
 		return false
@@ -480,8 +486,8 @@ local function vig_render_ogk_staff_content(scroll_h)
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_ogk_search, 256)
-	local child_h = scroll_h or math.max(160 * custom_dpi, imgui.GetContentRegionAvail().y)
-	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(vig_imgui_content_w(), child_h), true)
+	local list_h = vig_binder_tab_inner_height(scroll_h, 32 * custom_dpi)
+	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(0, list_h), true)
 	local last_role = nil
 	local shown = 0
 	for _, entry in ipairs(OGK_STAFF) do
@@ -1950,10 +1956,10 @@ local function vig_render_binder_fire_fields(script_h)
 	)
 end
 
-local function vig_render_binder_rp_tab(scroll_h)
-	local child_h = scroll_h or math.max(200 * custom_dpi, imgui.GetContentRegionAvail().y)
-	imgui.BeginChild("##binder_rp_scroll", imgui.ImVec2(0, child_h), true)
-	local half_h = math.max(100 * custom_dpi, (child_h - 48 * custom_dpi) * 0.45)
+local function vig_render_binder_rp_tab(panel_h)
+	local list_h = vig_binder_tab_inner_height(panel_h, 0)
+	imgui.BeginChild("##binder_rp_scroll", imgui.ImVec2(0, list_h), true)
+	local half_h = math.max(100 * custom_dpi, (list_h - 48 * custom_dpi) * 0.45)
 	vig_render_binder_gwarn_fields(half_h)
 	imgui.Separator()
 	vig_render_binder_fire_fields(half_h)
@@ -1979,7 +1985,7 @@ end
 
 local log_date_expanded = {}
 
-local function vig_render_discipline_log_content(scroll_h)
+local function vig_render_discipline_log_content(panel_h)
 	imgui.InputTextWithHint(
 		"##log_search",
 		im_utf8("Поиск по логу (дата, ник, статья…)"),
@@ -1987,11 +1993,8 @@ local function vig_render_discipline_log_content(scroll_h)
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
-	local child_h = scroll_h or math.max(180 * custom_dpi, imgui.GetContentRegionAvail().y)
-	if child_h < 80 * custom_dpi then
-		child_h = 180 * custom_dpi
-	end
-	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(0, child_h), true)
+	local list_h = vig_binder_tab_inner_height(panel_h, 32 * custom_dpi)
+	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(0, list_h), true)
 	local ok, err = pcall(function()
 		local sections = vig_parse_discipline_log_sections()
 		if #sections == 0 then
@@ -2057,25 +2060,23 @@ local function vig_render_discipline_log_content(scroll_h)
 	imgui.EndChild()
 end
 
-local function vig_render_binder_settings_tabs(scroll_h)
-	scroll_h = scroll_h or math.max(280 * custom_dpi, imgui.GetContentRegionAvail().y)
+local function vig_render_binder_settings_tabs(panel_h)
+	panel_h = panel_h or math.max(280 * custom_dpi, imgui.GetContentRegionAvail().y)
 	if imgui.BeginTabBar("##binder_tabs") then
 		if imgui.BeginTabItem(im_utf8("Отыгровки##binder_tab_rp")) then
-			vig_render_binder_rp_tab(scroll_h)
+			vig_render_binder_rp_tab(panel_h)
 			imgui.EndTabItem()
 		end
 		if imgui.BeginTabItem(im_utf8("Сотрудники ОГК##binder_tab_ogk")) then
-			vig_render_ogk_staff_content(scroll_h)
+			vig_render_ogk_staff_content(panel_h)
 			imgui.EndTabItem()
 		end
 		if imgui.BeginTabItem(im_utf8("Лог##binder_tab_log")) then
-			vig_render_discipline_log_content(scroll_h)
+			vig_render_discipline_log_content(panel_h)
 			imgui.EndTabItem()
 		end
 		if imgui.BeginTabItem(im_utf8("Обновление##binder_tab_upd")) then
-			imgui.BeginChild("##binder_upd_scroll", imgui.ImVec2(0, scroll_h), true)
 			vig_render_binder_update_tab()
-			imgui.EndChild()
 			imgui.EndTabItem()
 		end
 		imgui.EndTabBar()
@@ -2612,6 +2613,7 @@ function register_spec_imgui()
 						im_utf8(GWARN_BINDER_MODAL_TITLE),
 						SpecBinderUi.modal_open,
 						imgui.WindowFlags.NoCollapse
+							+ (imgui.WindowFlags.NoScrollbar or 0)
 					)
 				then
 					imgui.TextColored(
@@ -2619,9 +2621,11 @@ function register_spec_imgui()
 						im_utf8("Активная версия: v." .. get_local_script_version())
 					)
 					imgui.Separator()
-					local footer_h = 44 * custom_dpi
-					local tab_scroll_h = math.max(240 * custom_dpi, imgui.GetContentRegionAvail().y - footer_h)
-					vig_render_binder_settings_tabs(tab_scroll_h)
+					local footer_h = 50 * custom_dpi
+					local panel_h = math.max(220 * custom_dpi, imgui.GetContentRegionAvail().y - footer_h)
+					imgui.BeginChild("##binder_tabs_host", imgui.ImVec2(0, panel_h), false)
+					vig_render_binder_settings_tabs(panel_h)
+					imgui.EndChild()
 					imgui.Separator()
 					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(140 * custom_dpi, 28 * custom_dpi)) then
 						binder_ui_apply_to_runtime()
