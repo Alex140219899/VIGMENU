@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.12")
+script_version("5.2.13")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.12"
+local SCRIPT_VERSION_TEXT = "5.2.13"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -763,6 +763,81 @@ local function vig_download_best_script(script_urls, tmp, local_v, manifest_v)
 	return best_body, best_ver, best_url
 end
 
+--- Версия из VigMenu.lua на GitHub (обход устаревшего VigUpdate.json на jsDelivr).
+local function vig_probe_remote_script_max_version(update_url)
+	update_url = tostring(update_url or "")
+	if update_url == "" then
+		return nil
+	end
+	local tmp = (worked_dir .. "/.gwarnn_probe.lua"):gsub("\\", "/")
+	if doesFileExist(tmp) then
+		pcall(os.remove, tmp)
+	end
+	local urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, update_url, "")
+	local best_ver = nil
+	for _, su in ipairs(urls) do
+		if doesFileExist(tmp) then
+			pcall(os.remove, tmp)
+		end
+		if download_url_to_file_sync(tmp, su, 120) then
+			local f = io.open(tmp, "rb")
+			if f then
+				local head = f:read(65536) or ""
+				f:close()
+				local ver = head:match("script_version%s*%(%s*[\"']([^\"']+)[\"']%s*%)")
+				if ver and ver ~= "" then
+					ver = vig_version_trim(ver)
+					print("[gwarnn] probe VigMenu.lua v." .. ver .. " ← " .. tostring(su))
+					if not best_ver or vig_compare_versions(ver, best_ver) > 0 then
+						best_ver = ver
+					end
+				end
+			end
+		end
+	end
+	if doesFileExist(tmp) then
+		pcall(os.remove, tmp)
+	end
+	return best_ver
+end
+
+--- Если VigUpdate.json от CDN старый, подставляем версию из скачанного VigMenu.lua.
+local function vig_manifest_with_fresh_script_version(m)
+	if type(m) ~= "table" then
+		return m
+	end
+	local update_url = type(m.update_url) == "string" and m.update_url or ""
+	if update_url == "" then
+		return m
+	end
+	local manifest_v = vig_version_trim(m.current_version or "")
+	local local_v = vig_version_trim(get_local_script_version())
+	if manifest_v ~= "" and vig_compare_versions(manifest_v, local_v) > 0 then
+		return m
+	end
+	local probed = vig_probe_remote_script_max_version(update_url)
+	if not probed or probed == "" then
+		return m
+	end
+	if vig_compare_versions(probed, manifest_v) <= 0 and vig_compare_versions(probed, local_v) <= 0 then
+		return m
+	end
+	if manifest_v ~= "" and vig_compare_versions(probed, manifest_v) > 0 then
+		print(
+			"[gwarnn] VigUpdate.json v."
+				.. manifest_v
+				.. " устарел (CDN), в VigMenu.lua на GitHub v."
+				.. probed
+		)
+	end
+	local out = {}
+	for k, v in pairs(m) do
+		out[k] = v
+	end
+	out.current_version = probed
+	return out
+end
+
 --- jsDelivr кэширует @main надолго — сначала raw GitHub с cache-bust, затем зеркало. Берём манифест с максимальной версией.
 local function fetch_update_manifest()
 	local tmp = (worked_dir .. "/.gwarnn_manifest_tmp.json"):gsub("\\", "/")
@@ -840,6 +915,14 @@ local function fetch_update_manifest()
 		return best_data, nil
 	end
 	return nil, last_err
+end
+
+local function fetch_update_manifest_resolved()
+	local m, err = fetch_update_manifest()
+	if m then
+		m = vig_manifest_with_fresh_script_version(m)
+	end
+	return m, err
 end
 
 local function manifest_script_needs_update(m)
@@ -1002,7 +1085,7 @@ local function vig_run_github_update_from_settings(opts)
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
-		local m, err = fetch_update_manifest()
+		local m, err = fetch_update_manifest_resolved()
 		if not m then
 			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось получить VigUpdate.json: " .. tostring(err), message_color)
 			UpdateUi.busy = false
@@ -1109,7 +1192,7 @@ local function vig_check_updates_chat_only()
 	end
 	UpdateUi.busy = true
 	lua_thread.create(function()
-		local m, err = fetch_update_manifest()
+		local m, err = fetch_update_manifest_resolved()
 		if not m then
 			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Проверка: " .. tostring(err), message_color)
 			UpdateUi.busy = false
@@ -1177,7 +1260,7 @@ local function vig_delayed_update_hint_after_welcome()
 		if UpdateUi.busy then
 			return
 		end
-		local m, err = fetch_update_manifest()
+		local m, err = fetch_update_manifest_resolved()
 		if not m then
 			return
 		end

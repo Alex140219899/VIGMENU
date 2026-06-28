@@ -1,6 +1,6 @@
 {
-  "current_version": "5.2.12",
-  "update_info": "Крестик закрытия настроек как у главного окна VigMenu",
+  "current_version": "5.2.13",
+  "update_info": "Проверка обновления по VigMenu.lua, если CDN отдал старый VigUpdate.json",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
