@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.7")
+script_version("5.2.8")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.7"
+local SCRIPT_VERSION_TEXT = "5.2.8"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -469,10 +469,7 @@ local function vig_copy_text_to_clipboard(text)
 	return false
 end
 
-local function vig_render_ogk_staff_list()
-	if not imgui.CollapsingHeader(im_utf8("Сотрудники ОГК##binder_ogk")) then
-		return
-	end
+local function vig_render_ogk_staff_content(scroll_h)
 	imgui.InputTextWithHint(
 		"##ogk_search",
 		im_utf8("Поиск (должность / ФИО)"),
@@ -480,7 +477,8 @@ local function vig_render_ogk_staff_list()
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_ogk_search, 256)
-	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(vig_imgui_content_w(), 200 * custom_dpi), true)
+	local child_h = scroll_h or math.max(160 * custom_dpi, imgui.GetContentRegionAvail().y)
+	imgui.BeginChild("##ogk_staff_scroll", imgui.ImVec2(vig_imgui_content_w(), child_h), true)
 	local last_role = nil
 	local shown = 0
 	for _, entry in ipairs(OGK_STAFF) do
@@ -1748,10 +1746,101 @@ local function vig_parse_discipline_log_sections()
 	return sections
 end
 
-local function vig_render_discipline_log_viewer()
-	if not imgui.CollapsingHeader(im_utf8("Лог наказаний##binder_log")) then
-		return
+local function vig_render_binder_gwarn_fields(script_h)
+	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Спец. выговор"))
+	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
+	imgui.InputText("##binder_cmd_gwarn", SpecBinderUi.buf_cmd_gwarn, 64)
+	if imgui.IsItemHovered() then
+		imgui.SetTooltip(im_utf8("Формат: gwarn — подставятся id и статья"))
 	end
+	imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
+	imgui.InputText("##binder_delay_gwarn", SpecBinderUi.buf_delay_gwarn, 16)
+	local multiline_h = script_h or 140 * custom_dpi
+	imgui.InputTextMultiline(
+		"##binder_script_gwarn",
+		SpecBinderUi.buf_script_gwarn,
+		8192,
+		imgui.ImVec2(vig_imgui_content_w(), multiline_h)
+	)
+end
+
+local function vig_render_binder_fire_fields(script_h)
+	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Увольнение"))
+	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
+	imgui.InputText("##binder_cmd_fire", SpecBinderUi.buf_cmd_fire, 64)
+	if imgui.IsItemHovered() then
+		imgui.SetTooltip(im_utf8("Формат: demoute — подставятся id, дни запрета и статья"))
+	end
+	imgui.TextWrapped(im_utf8("Дней запрета вступления (0–14, 0 = без запрета):"))
+	imgui.InputText("##binder_fire_ban_days", SpecBinderUi.buf_fire_ban_days, 8)
+	imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
+	imgui.InputText("##binder_delay_fire", SpecBinderUi.buf_delay_fire, 16)
+	local multiline_h = script_h or 140 * custom_dpi
+	imgui.InputTextMultiline(
+		"##binder_script_fire",
+		SpecBinderUi.buf_script_fire,
+		8192,
+		imgui.ImVec2(vig_imgui_content_w(), multiline_h)
+	)
+end
+
+local function vig_render_binder_rp_tab(scroll_h)
+	local child_h = scroll_h or math.max(200 * custom_dpi, imgui.GetContentRegionAvail().y)
+	imgui.BeginChild("##binder_rp_scroll", imgui.ImVec2(0, child_h), true)
+	local half_h = math.max(100 * custom_dpi, (child_h - 48 * custom_dpi) * 0.45)
+	vig_render_binder_gwarn_fields(half_h)
+	imgui.Separator()
+	vig_render_binder_fire_fields(half_h)
+	imgui.EndChild()
+end
+
+local function vig_render_binder_update_tab()
+	imgui.TextWrapped(
+		im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее.")
+	)
+	if UpdateUi.busy then
+		imgui.Text(im_utf8("Идёт загрузка…"))
+	else
+		if imgui.Button(im_utf8("Проверить##vig_chk"), imgui.ImVec2(236 * custom_dpi, 30 * custom_dpi)) then
+			vig_check_updates_chat_only()
+		end
+		imgui.SameLine()
+		if imgui.Button(im_utf8("Обновить с GitHub##vig_git_upd"), imgui.ImVec2(236 * custom_dpi, 30 * custom_dpi)) then
+			vig_run_github_update_from_settings()
+		end
+	end
+end
+
+local function vig_render_binder_settings_tabs(scroll_h)
+	scroll_h = scroll_h or math.max(280 * custom_dpi, imgui.GetContentRegionAvail().y)
+	local tab_flags = 0
+	if imgui.TabBarFlags and imgui.TabBarFlags.FittingPolicyScroll then
+		tab_flags = imgui.TabBarFlags.FittingPolicyScroll
+	end
+	if imgui.BeginTabBar("##binder_tabs", tab_flags) then
+		if imgui.BeginTabItem(im_utf8("Отыгровки##binder_tab_rp")) then
+			vig_render_binder_rp_tab(scroll_h)
+			imgui.EndTabItem()
+		end
+		if imgui.BeginTabItem(im_utf8("Сотрудники ОГК##binder_tab_ogk")) then
+			vig_render_ogk_staff_content(scroll_h)
+			imgui.EndTabItem()
+		end
+		if imgui.BeginTabItem(im_utf8("Лог##binder_tab_log")) then
+			vig_render_discipline_log_content(scroll_h)
+			imgui.EndTabItem()
+		end
+		if imgui.BeginTabItem(im_utf8("Обновление##binder_tab_upd")) then
+			imgui.BeginChild("##binder_upd_scroll", imgui.ImVec2(0, scroll_h), true)
+			vig_render_binder_update_tab()
+			imgui.EndChild()
+			imgui.EndTabItem()
+		end
+		imgui.EndTabBar()
+	end
+end
+
+local function vig_render_discipline_log_content(scroll_h)
 	imgui.InputTextWithHint(
 		"##log_search",
 		im_utf8("Поиск по логу (дата, ник, статья…)"),
@@ -1759,7 +1848,8 @@ local function vig_render_discipline_log_viewer()
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
-	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(vig_imgui_content_w(), 220 * custom_dpi), true)
+	local child_h = scroll_h or math.max(180 * custom_dpi, imgui.GetContentRegionAvail().y)
+	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(vig_imgui_content_w(), child_h), true)
 	local sections = vig_parse_discipline_log_sections()
 	if #sections == 0 then
 		imgui.TextWrapped(
@@ -2339,53 +2429,9 @@ function register_spec_imgui()
 						im_utf8("Активная версия: v." .. get_local_script_version())
 					)
 					imgui.Separator()
-					if imgui.CollapsingHeader(im_utf8("Спец. выговор##binder_sec_gwarn")) then
-						imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
-						imgui.InputText("##binder_cmd_gwarn", SpecBinderUi.buf_cmd_gwarn, 64)
-						if imgui.IsItemHovered() then
-							imgui.SetTooltip(im_utf8("Формат: gwarn — подставятся id и статья"))
-						end
-						imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
-						imgui.InputText("##binder_delay_gwarn", SpecBinderUi.buf_delay_gwarn, 16)
-						imgui.InputTextMultiline(
-							"##binder_script_gwarn",
-							SpecBinderUi.buf_script_gwarn,
-							8192,
-							imgui.ImVec2(vig_imgui_content_w(), 140 * custom_dpi)
-						)
-					end
-					if imgui.CollapsingHeader(im_utf8("Увольнение##binder_sec_fire")) then
-						imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
-						imgui.InputText("##binder_cmd_fire", SpecBinderUi.buf_cmd_fire, 64)
-						if imgui.IsItemHovered() then
-							imgui.SetTooltip(im_utf8("Формат: demoute — подставятся id, дни запрета и статья"))
-						end
-						imgui.TextWrapped(im_utf8("Дней запрета вступления (0–14, 0 = без запрета):"))
-						imgui.InputText("##binder_fire_ban_days", SpecBinderUi.buf_fire_ban_days, 8)
-						imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
-						imgui.InputText("##binder_delay_fire", SpecBinderUi.buf_delay_fire, 16)
-						imgui.InputTextMultiline(
-							"##binder_script_fire",
-							SpecBinderUi.buf_script_fire,
-							8192,
-							imgui.ImVec2(vig_imgui_content_w(), 140 * custom_dpi)
-						)
-					end
-					vig_render_ogk_staff_list()
-					vig_render_discipline_log_viewer()
-					imgui.Separator()
-					imgui.TextWrapped(im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее."))
-					if UpdateUi.busy then
-						imgui.Text(im_utf8("Идёт загрузка…"))
-					else
-						if imgui.Button(im_utf8("Проверить##vig_chk"), imgui.ImVec2(236 * custom_dpi, 30 * custom_dpi)) then
-							vig_check_updates_chat_only()
-						end
-						imgui.SameLine()
-						if imgui.Button(im_utf8("Обновить с GitHub##vig_git_upd"), imgui.ImVec2(236 * custom_dpi, 30 * custom_dpi)) then
-							vig_run_github_update_from_settings()
-						end
-					end
+					local footer_h = 44 * custom_dpi
+					local tab_scroll_h = math.max(240 * custom_dpi, imgui.GetContentRegionAvail().y - footer_h)
+					vig_render_binder_settings_tabs(tab_scroll_h)
 					imgui.Separator()
 					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(140 * custom_dpi, 28 * custom_dpi)) then
 						binder_ui_apply_to_runtime()
