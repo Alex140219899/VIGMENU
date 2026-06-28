@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.8")
+script_version("5.2.9")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.8"
+local SCRIPT_VERSION_TEXT = "5.2.9"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -1811,13 +1811,99 @@ local function vig_render_binder_update_tab()
 	end
 end
 
+local log_date_expanded = {}
+
+local function vig_render_discipline_log_content(scroll_h)
+	imgui.InputTextWithHint(
+		"##log_search",
+		im_utf8("Поиск по логу (дата, ник, статья…)"),
+		SpecBinderUi.buf_log_search,
+		256
+	)
+	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
+	local child_h = scroll_h or math.max(180 * custom_dpi, imgui.GetContentRegionAvail().y)
+	if child_h < 80 * custom_dpi then
+		child_h = 180 * custom_dpi
+	end
+	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(0, child_h), true)
+	local ok, err = pcall(function()
+		local sections = vig_parse_discipline_log_sections()
+		if #sections == 0 then
+			imgui.TextWrapped(
+				im_utf8("Лог пуст. Записи появятся после выдачи спец. выговора или увольнения.")
+			)
+			return
+		end
+		local shown_dates = 0
+		for i = #sections, 1, -1 do
+			local sec = sections[i]
+			local date_hit = vig_query_matches(sec.date, q)
+			local filtered = {}
+			if date_hit then
+				filtered = sec.entries
+			else
+				for _, ent in ipairs(sec.entries) do
+					if vig_query_matches(ent, q) then
+						filtered[#filtered + 1] = ent
+					end
+				end
+			end
+			if date_hit or #filtered > 0 then
+				local expand_key = "logdt_" .. i
+				if log_date_expanded[expand_key] == nil then
+					log_date_expanded[expand_key] = false
+				end
+				local arrow = log_date_expanded[expand_key] and "[-] " or "[+] "
+				if imgui.Selectable(im_utf8(arrow .. sec.date .. "##" .. expand_key), false) then
+					log_date_expanded[expand_key] = not log_date_expanded[expand_key]
+				end
+				if log_date_expanded[expand_key] then
+					imgui.Indent()
+					for j, ent in ipairs(filtered) do
+						if imgui.SmallButton(im_utf8("Коп.##logcpy_" .. i .. "_" .. j)) then
+							if vig_copy_text_to_clipboard(ent) then
+								sampAddChatMessageUtf8(
+									"{009EFF}[Vigmenu]{ffffff} Строка лога скопирована в буфер обмена.",
+									message_color
+								)
+							end
+						end
+						if imgui.IsItemHovered() then
+							imgui.SetTooltip(im_utf8("Копировать строку в буфер обмена"))
+						end
+						imgui.SameLine(0, 6 * custom_dpi)
+						imgui.TextWrapped(im_utf8(tostring(ent or "")))
+						imgui.Spacing()
+					end
+					imgui.Unindent()
+				end
+				shown_dates = shown_dates + 1
+			end
+		end
+		if shown_dates == 0 then
+			imgui.TextColored(imgui.ImVec4(0.55, 0.55, 0.6, 1.0), im_utf8("Ничего не найдено."))
+		end
+	end)
+	if not ok then
+		imgui.TextColored(imgui.ImVec4(1.0, 0.45, 0.45, 1.0), im_utf8("Ошибка отображения лога."))
+		print("[gwarnn] лог наказаний UI: " .. tostring(err))
+	end
+	imgui.EndChild()
+end
+
 local function vig_render_binder_settings_tabs(scroll_h)
 	scroll_h = scroll_h or math.max(280 * custom_dpi, imgui.GetContentRegionAvail().y)
 	local tab_flags = 0
 	if imgui.TabBarFlags and imgui.TabBarFlags.FittingPolicyScroll then
 		tab_flags = imgui.TabBarFlags.FittingPolicyScroll
 	end
-	if imgui.BeginTabBar("##binder_tabs", tab_flags) then
+	local tab_bar_ok = false
+	if tab_flags ~= 0 then
+		tab_bar_ok = imgui.BeginTabBar("##binder_tabs", tab_flags)
+	else
+		tab_bar_ok = imgui.BeginTabBar("##binder_tabs")
+	end
+	if tab_bar_ok then
 		if imgui.BeginTabItem(im_utf8("Отыгровки##binder_tab_rp")) then
 			vig_render_binder_rp_tab(scroll_h)
 			imgui.EndTabItem()
@@ -1838,66 +1924,6 @@ local function vig_render_binder_settings_tabs(scroll_h)
 		end
 		imgui.EndTabBar()
 	end
-end
-
-local function vig_render_discipline_log_content(scroll_h)
-	imgui.InputTextWithHint(
-		"##log_search",
-		im_utf8("Поиск по логу (дата, ник, статья…)"),
-		SpecBinderUi.buf_log_search,
-		256
-	)
-	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
-	local child_h = scroll_h or math.max(180 * custom_dpi, imgui.GetContentRegionAvail().y)
-	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(vig_imgui_content_w(), child_h), true)
-	local sections = vig_parse_discipline_log_sections()
-	if #sections == 0 then
-		imgui.TextWrapped(
-			im_utf8("Лог пуст. Записи появятся после выдачи спец. выговора или увольнения.")
-		)
-	else
-		local shown_dates = 0
-		for i = #sections, 1, -1 do
-			local sec = sections[i]
-			local date_hit = vig_query_matches(sec.date, q)
-			local filtered = {}
-			if date_hit then
-				filtered = sec.entries
-			else
-				for _, ent in ipairs(sec.entries) do
-					if vig_query_matches(ent, q) then
-						filtered[#filtered + 1] = ent
-					end
-				end
-			end
-			if date_hit or #filtered > 0 then
-				if imgui.CollapsingHeader(im_utf8(sec.date .. "##logdt_" .. i)) then
-					for j, ent in ipairs(filtered) do
-						local copy_id = "##logcpy_" .. i .. "_" .. j
-						if imgui.SmallButton(im_utf8("Коп." .. copy_id)) then
-							if vig_copy_text_to_clipboard(ent) then
-								sampAddChatMessageUtf8(
-									"{009EFF}[Vigmenu]{ffffff} Строка лога скопирована в буфер обмена.",
-									message_color
-								)
-							end
-						end
-						if imgui.IsItemHovered() then
-							imgui.SetTooltip(im_utf8("Копировать строку в буфер обмена"))
-						end
-						imgui.SameLine(0, 6 * custom_dpi)
-						imgui.TextWrapped(im_utf8(ent))
-						imgui.Spacing()
-					end
-				end
-				shown_dates = shown_dates + 1
-			end
-		end
-		if shown_dates == 0 then
-			imgui.TextColored(imgui.ImVec4(0.55, 0.55, 0.6, 1.0), im_utf8("Ничего не найдено."))
-		end
-	end
-	imgui.EndChild()
 end
 
 local function vig_set_log_pending(action_type, player_id, article_reason)
