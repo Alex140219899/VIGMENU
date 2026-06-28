@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.17")
+script_version("5.2.18")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.17"
+local SCRIPT_VERSION_TEXT = "5.2.18"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2635,22 +2635,30 @@ function register_spec_imgui()
 						im_utf8("Активная версия: v." .. get_local_script_version())
 					)
 					imgui.Separator()
-					local footer_h = 50 * custom_dpi
-					local panel_h = math.max(220 * custom_dpi, imgui.GetContentRegionAvail().y - footer_h)
+					local binder_footer_btn_h = 28 * custom_dpi
+					local binder_footer_pad = 8 * custom_dpi
+					local binder_footer_h = binder_footer_btn_h + binder_footer_pad * 2
+					local panel_h = math.max(220 * custom_dpi, imgui.GetContentRegionAvail().y - binder_footer_h)
 					imgui.BeginChild("##binder_tabs_host", imgui.ImVec2(0, panel_h), false)
 					vig_render_binder_settings_tabs(panel_h)
 					imgui.EndChild()
 					imgui.Separator()
-					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(140 * custom_dpi, 28 * custom_dpi)) then
+					local footer_flags = imgui.WindowFlags and imgui.WindowFlags.NoScrollbar or 0
+					imgui.BeginChild("##binder_footer", imgui.ImVec2(0, binder_footer_h), false, footer_flags)
+					local footer_btn_w = imgui.GetMiddleButtonX(2)
+					local footer_center_y = math.max(0, (imgui.GetContentRegionAvail().y - binder_footer_btn_h) * 0.5)
+					imgui.SetCursorPosY(imgui.GetCursorPosY() + footer_center_y)
+					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(footer_btn_w, binder_footer_btn_h)) then
 						binder_ui_apply_to_runtime()
 						save_gwarn_binder_settings()
 						sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Настройки отыгровки сохранены.", message_color)
 						imgui.CloseCurrentPopup()
 					end
 					imgui.SameLine()
-					if imgui.Button(im_utf8("Отмена##binder_can"), imgui.ImVec2(140 * custom_dpi, 28 * custom_dpi)) then
+					if imgui.Button(im_utf8("Отмена##binder_can"), imgui.ImVec2(footer_btn_w, binder_footer_btn_h)) then
 						imgui.CloseCurrentPopup()
 					end
+					imgui.EndChild()
 					imgui.EndPopup()
 				end
 				imgui.Separator()
