@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.24")
+script_version("5.2.25")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.24"
+local SCRIPT_VERSION_TEXT = "5.2.25"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -384,16 +384,16 @@ local OGK_STAFF = {
 	{ role = "Федеральный Аудитор", name = "Huston Sweet" },
 	{ role = "Федеральный Аудитор", name = "Sophie Rein" },
 	{ role = "Окружной Аудитор", name = "Pasha Monasik" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
-	{ role = "Помощник Аудитора", name = "Kredo Bank" },
-	{ role = "Помощник Аудитора", name = "Soul Kristian" },
-	{ role = "Помощник Аудитора", name = "Luis Love" },
+	{ role = "Окружной Аудитор", name = "Kama Pullya" },
+	{ role = "Окружной Аудитор", name = "Kredo Bank" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Egor Mokrivskyi" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Roni Krey" },
+	{ role = "Помощник Аудитора", name = "Luis Love" },
+	{ role = "Помощник Аудитора", name = "Maras Crown" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
@@ -402,8 +402,8 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
 	{ role = "Помощник Аудитора", name = "Artiom Bounteiro" },
 	{ role = "Помощник Аудитора", name = "Ludwig Bounteiro" },
-	{ role = "Помощник Аудитора", name = "Kama Pullya" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Torino Mavrodi" },
 }
 
 local function normalize_charbuf_input(buf, max_bytes)
