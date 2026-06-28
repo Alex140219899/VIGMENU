@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("5.2.16")
+script_version("5.2.17")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "5.2.16"
+local SCRIPT_VERSION_TEXT = "5.2.17"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -933,11 +933,7 @@ local function fetch_update_manifest()
 end
 
 local function fetch_update_manifest_resolved()
-	local m, err = fetch_update_manifest()
-	if m then
-		m = vig_manifest_with_fresh_script_version(m)
-	end
-	return m, err
+	return fetch_update_manifest()
 end
 
 local function manifest_script_needs_update(m)
@@ -980,6 +976,7 @@ local UpdateUi = {
 	pending_check = false,
 	pending_update = false,
 	pending_update_opts = nil,
+	worker_started = false,
 }
 
 -- Forward declaration: используется в функции обновления, которая объявлена выше фактической реализации.
@@ -1024,89 +1021,93 @@ local function try_reload_script()
 	end
 end
 
+local function vig_do_download_script()
+	local url = UpdateUi.script_url
+	if url == "" then
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} В манифесте нет update_url.", message_color)
+		return false
+	end
+	local sp = thisScript().path
+	if not sp or sp == "" then
+		return false
+	end
+	local tmp = (worked_dir .. "/.gwarnn_new.lua"):gsub("\\", "/")
+	if doesFileExist(tmp) then
+		pcall(os.remove, tmp)
+	end
+	local script_urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, url, UpdateUi.remote_script_ver)
+	local local_v = vig_version_trim(get_local_script_version())
+	local manifest_v = vig_version_trim(UpdateUi.remote_script_ver)
+	local body, new_ver = vig_download_best_script(script_urls, tmp, local_v, manifest_v)
+	if not body or body == "" then
+		sampAddChatMessageUtf8(
+			"{009EFF}[Vigmenu]{ffffff} Не удалось скачать VigMenu.lua v."
+				.. manifest_v
+				.. "+ (GitHub недоступен, jsDelivr отдал старый кэш). Замените .lua вручную с GitHub.",
+			message_color
+		)
+		return false
+	end
+	local target = tostring(sp)
+	local out = io.open(target, "wb") or io.open(target:gsub("/", "\\"), "wb")
+	if not out then
+		out = io.open(target:gsub("\\", "/"), "wb")
+	end
+	if not out then
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось записать .lua (права?).", message_color)
+		return false
+	end
+	out:write(body or "")
+	if out.flush then
+		pcall(out.flush, out)
+	end
+	out:close()
+	pcall(os.remove, tmp)
+	if new_ver and new_ver ~= "" then
+		sampAddChatMessageUtf8(
+			"{009EFF}[Vigmenu]{ffffff} Записан VigMenu.lua, версия в файле: "
+				.. new_ver
+				.. ". Перезагрузка…",
+			message_color
+		)
+	else
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Скрипт записан. Перезагрузка…", message_color)
+	end
+	local mc = last_manifest_cache
+	if mc and type(mc.update_info) == "string" and vig_version_trim(mc.update_info) ~= "" then
+		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. mc.update_info, message_color)
+	end
+	wait(900)
+	try_reload_script()
+	return true
+end
+
 local function start_download_script_thread()
 	if UpdateUi.busy then
 		return
 	end
-	local url = UpdateUi.script_url
-	if url == "" then
-		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} В манифесте нет update_url.", message_color)
-		return
-	end
-	local sp = thisScript().path
-	if not sp or sp == "" then
-		return
-	end
 	UpdateUi.busy = true
-	lua_thread.create(function()
-		wait(0)
-		local ok_run, err_run = pcall(function()
-		local tmp = (worked_dir .. "/.gwarnn_new.lua"):gsub("\\", "/")
-		if doesFileExist(tmp) then
-			pcall(os.remove, tmp)
-		end
-		local script_urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, url, UpdateUi.remote_script_ver)
-		local local_v = vig_version_trim(get_local_script_version())
-		local manifest_v = vig_version_trim(UpdateUi.remote_script_ver)
-		local body, new_ver = vig_download_best_script(script_urls, tmp, local_v, manifest_v)
-		if not body or body == "" then
-			sampAddChatMessageUtf8(
-				"{009EFF}[Vigmenu]{ffffff} Не удалось скачать VigMenu.lua v."
-					.. manifest_v
-					.. "+ (GitHub недоступен, jsDelivr отдал старый кэш). Замените .lua вручную с GitHub.",
-				message_color
-			)
-			UpdateUi.busy = false
-			return
-		end
-		local target = tostring(sp)
-		local out = io.open(target, "wb") or io.open(target:gsub("/", "\\"), "wb")
-		if not out then
-			out = io.open(target:gsub("\\", "/"), "wb")
-		end
-		if not out then
-			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось записать .lua (права?).", message_color)
-			UpdateUi.busy = false
-			return
-		end
-		out:write(body or "")
-		if out.flush then
-			pcall(out.flush, out)
-		end
-		out:close()
-		pcall(os.remove, tmp)
-		if new_ver and new_ver ~= "" then
-			sampAddChatMessageUtf8(
-				"{009EFF}[Vigmenu]{ffffff} Записан VigMenu.lua, версия в файле: "
-					.. new_ver
-					.. ". Перезагрузка…",
-				message_color
-			)
-		else
-			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Скрипт записан. Перезагрузка…", message_color)
-		end
-		local mc = last_manifest_cache
-		if mc and type(mc.update_info) == "string" and vig_version_trim(mc.update_info) ~= "" then
-			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. mc.update_info, message_color)
-		end
+	if not lua_thread or not lua_thread.create then
 		UpdateUi.busy = false
-		wait(900)
-		try_reload_script()
-		end)
+		return
+	end
+	lua_thread.create(function()
+		wait(100)
+		local ok_run, err_run = pcall(vig_do_download_script)
 		if not ok_run then
 			print("[gwarnn] ошибка скачивания скрипта: " .. tostring(err_run))
 			sampAddChatMessageUtf8(
 				"{009EFF}[Vigmenu]{ffffff} Ошибка скачивания скрипта (см. консоль MoonLoader).",
 				message_color
 			)
-			UpdateUi.busy = false
 		end
+		UpdateUi.busy = false
 	end)
 end
 
 --- Запуск обновления вне колбэка ImGui (кнопка во вкладках иначе крашит игру).
 local function vig_queue_github_check()
-	if UpdateUi.busy then
+	if UpdateUi.busy or UpdateUi.pending_check or UpdateUi.pending_update then
 		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Дождитесь окончания операции.", message_color)
 		return
 	end
@@ -1114,7 +1115,7 @@ local function vig_queue_github_check()
 end
 
 local function vig_queue_github_update(opts)
-	if UpdateUi.busy then
+	if UpdateUi.busy or UpdateUi.pending_check or UpdateUi.pending_update then
 		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Подождите, идёт загрузка…", message_color)
 		return
 	end
@@ -1122,44 +1123,99 @@ local function vig_queue_github_update(opts)
 	UpdateUi.pending_update_opts = opts
 end
 
-local function vig_process_pending_update_actions()
-	if UpdateUi.busy then
-		return
-	end
-	if UpdateUi.pending_check then
-		UpdateUi.pending_check = false
-		vig_check_updates_chat_only()
-		return
-	end
-	if UpdateUi.pending_update then
-		local opts = UpdateUi.pending_update_opts
-		UpdateUi.pending_update = false
-		UpdateUi.pending_update_opts = nil
-		vig_run_github_update_from_settings(opts)
-	end
-end
-
---- Одна кнопка «Обновить» в настройках: качает статьи (если нужно), затем скрипт (если нужно). Без отдельного окна ImGui.
---- opts.force_articles: из пустого меню — всегда скачать VigArticles.json, даже если articles_version совпадает (локально пусто/битый файл).
-local function vig_run_github_update_from_settings(opts)
-	opts = type(opts) == "table" and opts or {}
-	if UpdateUi.busy then
-		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Подождите, идёт загрузка…", message_color)
-		return
-	end
+local function vig_do_check_updates()
 	UpdateUi.busy = true
-	lua_thread.create(function()
-		wait(0)
-		local ok_run, err_run = pcall(function()
-		local m, err = fetch_update_manifest_resolved()
+	local ok_run, err_run = pcall(function()
+		local m, err = fetch_update_manifest()
 		if not m then
-			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось получить VigUpdate.json: " .. tostring(err), message_color)
-			UpdateUi.busy = false
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Проверка: " .. tostring(err), message_color)
 			return
 		end
 		apply_updates_from_manifest(m)
+		local loc = vig_version_trim(get_local_script_version())
+		local rem = vig_version_trim(m.current_version or "")
+		if not UpdateUi.need_script and not UpdateUi.need_articles then
+			if vig_compare_versions(loc, rem) > 0 then
+				sampAddChatMessageUtf8(
+					"{009EFF}[Vigmenu]{ffffff} CDN/GitHub отдал старый VigUpdate.json (v."
+						.. rem
+						.. "). У вас v."
+						.. loc
+						.. ". Нажмите «Обновить с GitHub» — скрипт проверит .lua на сервере.",
+					message_color
+				)
+			else
+				sampAddChatMessageUtf8(
+					"{009EFF}[Vigmenu]{ffffff} Обновлений нет. Скрипт у вас: "
+						.. loc
+						.. " | в манифесте: "
+						.. rem
+						.. ".",
+					message_color
+				)
+			end
+			return
+		end
+		if UpdateUi.need_script then
+			sampAddChatMessageUtf8(
+				"{009EFF}[Vigmenu]{ffffff} Доступно обновление скрипта: у вас v."
+					.. loc
+					.. ", на GitHub v."
+					.. rem
+					.. ". Ниже — текст из VigUpdate.json.",
+				message_color
+			)
+			if type(m.update_info) == "string" and vig_version_trim(m.update_info) ~= "" then
+				sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.update_info, message_color)
+			end
+		end
+		if UpdateUi.need_articles and not UpdateUi.need_script then
+			sampAddChatMessageUtf8(
+				"{009EFF}[Vigmenu]{ffffff} Доступно обновление только статей VigArticles.json.",
+				message_color
+			)
+		end
+		if UpdateUi.need_articles and type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.articles_info, message_color)
+		end
+	end)
+	if not ok_run then
+		print("[gwarnn] ошибка «Проверить»: " .. tostring(err_run))
+		sampAddChatMessageUtf8(
+			"{009EFF}[Vigmenu]{ffffff} Ошибка проверки обновлений (см. консоль MoonLoader).",
+			message_color
+		)
+	end
+	UpdateUi.busy = false
+end
+
+local function vig_do_github_update(opts)
+	opts = type(opts) == "table" and opts or {}
+	UpdateUi.busy = true
+	local ok_run, err_run = pcall(function()
+		local m, err = fetch_update_manifest()
+		if not m then
+			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Не удалось получить VigUpdate.json: " .. tostring(err), message_color)
+			return
+		end
+		last_manifest_cache = m
+		apply_updates_from_manifest(m)
 		if opts.force_articles and type(m.articles_url) == "string" and vig_version_trim(m.articles_url) ~= "" then
 			UpdateUi.need_articles = true
+		end
+		if not UpdateUi.need_script and not UpdateUi.need_articles then
+			local probed = nil
+			pcall(function()
+				probed = vig_probe_remote_script_max_version(m.update_url or "")
+			end)
+			if probed and probed ~= "" then
+				local loc = vig_version_trim(get_local_script_version())
+				if vig_compare_versions(probed, loc) > 0 then
+					UpdateUi.need_script = true
+					UpdateUi.remote_script_ver = probed
+					m.current_version = probed
+				end
+			end
 		end
 		if not UpdateUi.need_script and not UpdateUi.need_articles then
 			local loc = vig_version_trim(get_local_script_version())
@@ -1170,7 +1226,7 @@ local function vig_run_github_update_from_settings(opts)
 						.. loc
 						.. " | в VigUpdate.json: v."
 						.. rem
-						.. " (кэш CDN или не запушен GitHub). Обновление не требуется.",
+						.. " (кэш CDN). Обновление не требуется.",
 					message_color
 				)
 			else
@@ -1183,7 +1239,6 @@ local function vig_run_github_update_from_settings(opts)
 					message_color
 				)
 			end
-			UpdateUi.busy = false
 			return
 		end
 		if UpdateUi.need_articles then
@@ -1242,98 +1297,58 @@ local function vig_run_github_update_from_settings(opts)
 			UpdateUi.need_articles = false
 		end
 		if UpdateUi.need_script then
-			UpdateUi.busy = false
-			start_download_script_thread()
-		else
-			UpdateUi.busy = false
+			vig_do_download_script()
 		end
-		end)
-		if not ok_run then
-			print("[gwarnn] ошибка «Обновить с GitHub»: " .. tostring(err_run))
-			sampAddChatMessageUtf8(
-				"{009EFF}[Vigmenu]{ffffff} Ошибка обновления (см. консоль MoonLoader).",
-				message_color
-			)
-			UpdateUi.busy = false
+	end)
+	if not ok_run then
+		print("[gwarnn] ошибка «Обновить с GitHub»: " .. tostring(err_run))
+		sampAddChatMessageUtf8(
+			"{009EFF}[Vigmenu]{ffffff} Ошибка обновления (см. консоль MoonLoader).",
+			message_color
+		)
+	end
+	UpdateUi.busy = false
+end
+
+local function vig_process_pending_update_actions()
+	if UpdateUi.busy then
+		return
+	end
+	if UpdateUi.pending_check then
+		UpdateUi.pending_check = false
+		vig_do_check_updates()
+		return
+	end
+	if UpdateUi.pending_update then
+		local opts = UpdateUi.pending_update_opts
+		UpdateUi.pending_update = false
+		UpdateUi.pending_update_opts = nil
+		vig_do_github_update(opts)
+	end
+end
+
+local function start_update_worker_loop()
+	if UpdateUi.worker_started or not lua_thread or not lua_thread.create then
+		return
+	end
+	UpdateUi.worker_started = true
+	lua_thread.create(function()
+		wait(500)
+		while true do
+			wait(200)
+			pcall(vig_process_pending_update_actions)
 		end
 	end)
 end
 
---- Только проверка VigUpdate.json — в чат версии и поля update_info / articles_info из манифеста.
+--- Одна кнопка «Обновить» в настройках (только очередь — работу делает start_update_worker_loop).
+local function vig_run_github_update_from_settings(opts)
+	vig_queue_github_update(opts)
+end
+
+--- Только проверка VigUpdate.json — в чат (только очередь).
 local function vig_check_updates_chat_only()
-	if UpdateUi.busy then
-		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Дождитесь окончания операции.", message_color)
-		return
-	end
-	UpdateUi.busy = true
-	lua_thread.create(function()
-		wait(0)
-		local ok_run, err_run = pcall(function()
-		local m, err = fetch_update_manifest_resolved()
-		if not m then
-			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Проверка: " .. tostring(err), message_color)
-			UpdateUi.busy = false
-			return
-		end
-		apply_updates_from_manifest(m)
-		local loc = vig_version_trim(get_local_script_version())
-		local rem = vig_version_trim(m.current_version or "")
-		if not UpdateUi.need_script and not UpdateUi.need_articles then
-			if vig_compare_versions(loc, rem) > 0 then
-				sampAddChatMessageUtf8(
-					"{009EFF}[Vigmenu]{ffffff} CDN/GitHub отдал старый VigUpdate.json (v."
-						.. rem
-						.. "). У вас v."
-						.. loc
-						.. ". Если на GitHub уже новее — подождите 5–10 мин или замените .lua вручную.",
-					message_color
-				)
-			else
-				sampAddChatMessageUtf8(
-					"{009EFF}[Vigmenu]{ffffff} Обновлений нет. Скрипт у вас: "
-						.. loc
-						.. " | в манифесте: "
-						.. rem
-						.. ".",
-					message_color
-				)
-			end
-			UpdateUi.busy = false
-			return
-		end
-		if UpdateUi.need_script then
-			sampAddChatMessageUtf8(
-				"{009EFF}[Vigmenu]{ffffff} Доступно обновление скрипта: у вас v."
-					.. loc
-					.. ", на GitHub v."
-					.. rem
-					.. ". Ниже — текст из VigUpdate.json.",
-				message_color
-			)
-			if type(m.update_info) == "string" and vig_version_trim(m.update_info) ~= "" then
-				sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.update_info, message_color)
-			end
-		end
-		if UpdateUi.need_articles and not UpdateUi.need_script then
-			sampAddChatMessageUtf8(
-				"{009EFF}[Vigmenu]{ffffff} Доступно обновление только статей VigArticles.json.",
-				message_color
-			)
-		end
-		if UpdateUi.need_articles and type(m.articles_info) == "string" and vig_version_trim(m.articles_info) ~= "" then
-			sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff}" .. m.articles_info, message_color)
-		end
-		UpdateUi.busy = false
-		end)
-		if not ok_run then
-			print("[gwarnn] ошибка «Проверить»: " .. tostring(err_run))
-			sampAddChatMessageUtf8(
-				"{009EFF}[Vigmenu]{ffffff} Ошибка проверки обновлений (см. консоль MoonLoader).",
-				message_color
-			)
-			UpdateUi.busy = false
-		end
-	end)
+	vig_queue_github_check()
 end
 
 --- После приветствия — только сообщение в чат, если есть обновление (скачивание по кнопке в настройках).
@@ -1346,7 +1361,7 @@ local function vig_delayed_update_hint_after_welcome()
 		if UpdateUi.busy then
 			return
 		end
-		local m, err = fetch_update_manifest_resolved()
+		local m, err = fetch_update_manifest()
 		if not m then
 			return
 		end
@@ -2533,7 +2548,6 @@ function register_spec_imgui()
 			if not SpecMenu.Window[0] then
 				return
 			end
-			vig_process_pending_update_actions()
 			imgui.SetNextWindowPos(imgui.ImVec2(sizeX / 2, sizeY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
 			imgui.SetNextWindowSize(imgui.ImVec2(600 * custom_dpi, 413 * custom_dpi), imgui.Cond.FirstUseEver)
 			imgui.SetNextWindowSizeConstraints(
@@ -2871,6 +2885,7 @@ function main()
 		end)
 	end
 	start_reregister_and_hooks_loop()
+	start_update_worker_loop()
 
 	local imgui_ok, imgui_err = pcall(register_spec_imgui)
 	if not imgui_ok then
