@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.0")
+script_version("6.0.1")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,15 +169,15 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.0"
+local SCRIPT_VERSION_TEXT = "6.0.1"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
-local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigUpdate.json"
+local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
-local UPDATE_MANIFEST_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigUpdate.json"
-local VIGARTICLES_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigArticles.json"
-local UPDATE_SCRIPT_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigMenu.lua"
-local BINDER_DEFAULT_JSON_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/MENU@main/VigGwarnBinderDefault.json"
-local BINDER_DEFAULT_JSON_URL = "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigGwarnBinderDefault.json"
+local UPDATE_MANIFEST_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/VIGMENU@main/VigUpdate.json"
+local VIGARTICLES_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/VIGMENU@main/VigArticles.json"
+local UPDATE_SCRIPT_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/VIGMENU@main/VigMenu.lua"
+local BINDER_DEFAULT_JSON_URL_JS = "https://cdn.jsdelivr.net/gh/Alex140219899/VIGMENU@main/VigGwarnBinderDefault.json"
+local BINDER_DEFAULT_JSON_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigGwarnBinderDefault.json"
 
 --- Постоянная папка данных внутри moonloader (не перезаписывается при обновлении .lua).
 local VIG_DATA_DIR_NAME = "VigMenu"
@@ -373,7 +373,7 @@ local OGK_STAFF = {
 	{ role = "Заместитель Ген.Аудитора", name = "Robert Padalecki" },
 	{ role = "Заместитель Ген.Аудитора", name = "Alan Crawford" },
 	{ role = "Федеральный Аудитор", name = "Luckas Mercy" },
-	{ role = "Федеральный Аудитор", name = "Вакантно" },
+	{ role = "Федеральный Аудитор", name = "Artiom Bounteiro" },
 	{ role = "Федеральный Аудитор", name = "Kori Shakur" },
 	{ role = "Федеральный Аудитор", name = "Dominic Fox" },
 	{ role = "Федеральный Аудитор", name = "Jones Sotka" },
@@ -387,23 +387,23 @@ local OGK_STAFF = {
 	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
 	{ role = "Окружной Аудитор", name = "Kama Pullya" },
 	{ role = "Окружной Аудитор", name = "Kredo Bank" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Egor Mokrivskyi" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Окружной Аудитор", name = "Ludwig Bounteiro" },
+	{ role = "Окружной Аудитор", name = "Maras Crown" },
+	{ role = "Окружной Аудитор", name = "Torino Mavrodi" },
+	{ role = "Помощник Аудитора", name = "Egor Mokrivsky" },
 	{ role = "Помощник Аудитора", name = "Roni Krey" },
 	{ role = "Помощник Аудитора", name = "Luis Love" },
-	{ role = "Помощник Аудитора", name = "Maras Crown" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
 	{ role = "Помощник Аудитора", name = "Mike Vendetta" },
 	{ role = "Помощник Аудитора", name = "Mark Devin" },
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
-	{ role = "Помощник Аудитора", name = "Artiom Bounteiro" },
-	{ role = "Помощник Аудитора", name = "Ludwig Bounteiro" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Torino Mavrodi" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Danilka Gill" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
 
 local function normalize_charbuf_input(buf, max_bytes)

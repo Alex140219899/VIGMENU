@@ -1,8 +1,8 @@
 {
-  "current_version": "6.0.0",
-  "update_info": "v6.0.0 — откат на стабильную базу, новая основа для дальнейших обновлений",
-  "update_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigMenu.lua",
+  "current_version": "6.0.1",
+  "update_info": "Обновлён список сотрудников ОГК (Artiom Bounteiro, Ludwig Bounteiro, Maras Crown, Torino Mavrodi, Danilka Gill)",
+  "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
-  "articles_url": "https://raw.githubusercontent.com/Alex140219899/MENU/main/VigArticles.json"
+  "articles_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigArticles.json"
 }
