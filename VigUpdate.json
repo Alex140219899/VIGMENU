@@ -1,6 +1,6 @@
 {
-  "current_version": "6.0.8",
-  "update_info": "ОГК: полупрозрачный список и ручное перемещение с фиксацией положения",
+  "current_version": "6.0.9",
+  "update_info": "Исправлен вылет списка ОГК (совместимость с mimgui без PushStyleVar)",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",

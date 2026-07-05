@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.8")
+script_version("6.0.9")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.8"
+local SCRIPT_VERSION_TEXT = "6.0.9"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -626,11 +626,13 @@ local function vig_ogk_draw_log_overlay(player)
 		end
 	end
 	imgui.SetNextWindowSize(imgui.ImVec2(280 * custom_dpi, 0), imgui.Cond.Always)
-	imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.04, 0.05, 0.07, 0.35))
-	imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0, 0, 0, 0))
-	imgui.PushStyleColor(imgui.Col.Border, imgui.ImVec4(0.45, 0.75, 1.0, 0.78))
-	imgui.PushStyleVar(imgui.StyleVar.WindowBorderSize, 1.5 * custom_dpi)
-	imgui.PushStyleVar(imgui.StyleVar.WindowPadding, imgui.ImVec2(10 * custom_dpi, 8 * custom_dpi))
+	local ogk_style_pushed = 0
+	if imgui.PushStyleColor then
+		imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.04, 0.05, 0.07, 0.35))
+		imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0, 0, 0, 0))
+		imgui.PushStyleColor(imgui.Col.Border, imgui.ImVec4(0.45, 0.75, 1.0, 0.78))
+		ogk_style_pushed = 3
+	end
 	imgui.Begin(im_utf8("##ogk_nearby_log"), nil, wflags)
 	if not ogk_log_move_mode and player and not sampIsChatInputActive() and not sampIsDialogActive() then
 		player.HideCursor = true
@@ -639,9 +641,13 @@ local function vig_ogk_draw_log_overlay(player)
 		imgui.TextColored(imgui.ImVec4(1.0, 0.82, 0.35, 0.95), im_utf8("Перетащите окно мышью"))
 	end
 	imgui.TextColored(imgui.ImVec4(0.55, 0.85, 1.0, 0.92), im_utf8(title))
-	imgui.PushStyleColor(imgui.Col.Separator, imgui.ImVec4(0.45, 0.75, 1.0, 0.42))
+	if imgui.PushStyleColor then
+		imgui.PushStyleColor(imgui.Col.Separator, imgui.ImVec4(0.45, 0.75, 1.0, 0.42))
+	end
 	imgui.Separator()
-	imgui.PopStyleColor()
+	if imgui.PopStyleColor and imgui.PushStyleColor then
+		imgui.PopStyleColor()
+	end
 	if #ogk_nearby == 0 then
 		imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.8, 0.7), im_utf8("—"))
 	else
@@ -681,8 +687,9 @@ local function vig_ogk_draw_log_overlay(player)
 		gwarn_binder.ogk_log_pos_y = imgui.GetWindowPos().y
 	end
 	imgui.End()
-	imgui.PopStyleVar(2)
-	imgui.PopStyleColor(3)
+	if ogk_style_pushed > 0 and imgui.PopStyleColor then
+		imgui.PopStyleColor(ogk_style_pushed)
+	end
 end
 
 local function normalize_charbuf_input(buf, max_bytes)
