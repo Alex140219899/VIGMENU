@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.1")
+script_version("6.0.2")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.1"
+local SCRIPT_VERSION_TEXT = "6.0.2"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -375,34 +375,34 @@ local OGK_STAFF = {
 	{ role = "Федеральный Аудитор", name = "Luckas Mercy" },
 	{ role = "Федеральный Аудитор", name = "Artiom Bounteiro" },
 	{ role = "Федеральный Аудитор", name = "Kori Shakur" },
-	{ role = "Федеральный Аудитор", name = "Dominic Fox" },
-	{ role = "Федеральный Аудитор", name = "Jones Sotka" },
+	{ role = "Федеральный Аудитор", name = "Вакантно" },
+	{ role = "Федеральный Аудитор", name = "Ludwig Bounteiro" },
 	{ role = "Федеральный Аудитор", name = "Alexey Fedotov" },
-	{ role = "Федеральный Аудитор", name = "Harumi Carbone" },
+	{ role = "Федеральный Аудитор", name = "Kama Pullya" },
 	{ role = "Федеральный Аудитор", name = "Dmitriy Muller" },
-	{ role = "Федеральный Аудитор", name = "Jennifer Fox" },
+	{ role = "Федеральный Аудитор", name = "Вакантно" },
 	{ role = "Федеральный Аудитор", name = "Huston Sweet" },
 	{ role = "Федеральный Аудитор", name = "Sophie Rein" },
-	{ role = "Окружной Аудитор", name = "Pasha Monasik" },
-	{ role = "Окружной Аудитор", name = "Shoma Quertov" },
-	{ role = "Окружной Аудитор", name = "Kama Pullya" },
+	{ role = "Окружной Аудитор", name = "Dominic Fox" },
+	{ role = "Окружной Аудитор", name = "Jennifer Fox" },
+	{ role = "Окружной Аудитор", name = "Kelly Line" },
 	{ role = "Окружной Аудитор", name = "Kredo Bank" },
-	{ role = "Окружной Аудитор", name = "Ludwig Bounteiro" },
+	{ role = "Окружной Аудитор", name = "Danilka Gill" },
 	{ role = "Окружной Аудитор", name = "Maras Crown" },
 	{ role = "Окружной Аудитор", name = "Torino Mavrodi" },
 	{ role = "Помощник Аудитора", name = "Egor Mokrivsky" },
 	{ role = "Помощник Аудитора", name = "Roni Krey" },
 	{ role = "Помощник Аудитора", name = "Luis Love" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Mark Soprano" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
 	{ role = "Помощник Аудитора", name = "Mike Vendetta" },
 	{ role = "Помощник Аудитора", name = "Mark Devin" },
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
+	{ role = "Помощник Аудитора", name = "Yoshi Swager" },
+	{ role = "Помощник Аудитора", name = "Kirill Mamont" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Danilka Gill" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
 
