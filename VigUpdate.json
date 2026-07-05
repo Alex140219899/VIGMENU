@@ -1,6 +1,6 @@
 {
-  "current_version": "6.0.2",
-  "update_info": "Обновлён список сотрудников ОГК (Kelly Line, Mark Soprano, Yoshi Swager, Kirill Mamont, перестановки по должностям)",
+  "current_version": "6.0.3",
+  "update_info": "Отображение ОГК рядом: лог, маркеры, радиус 0–15 м, оповещения (настройки в шестерёнке)",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",

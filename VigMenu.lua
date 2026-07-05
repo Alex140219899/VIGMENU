@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.2")
+script_version("6.0.3")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.2"
+local SCRIPT_VERSION_TEXT = "6.0.3"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -348,6 +348,13 @@ local SpecBinderUi = {
 	buf_cmd_fire = imgui.new.char[64](),
 	buf_ogk_search = imgui.new.char[256](),
 	buf_log_search = imgui.new.char[256](),
+	buf_ogk_log_title = imgui.new.char[128](),
+	ogk_enabled = imgui.new.bool(false),
+	ogk_show_log = imgui.new.bool(true),
+	ogk_show_marker = imgui.new.bool(false),
+	ogk_notify = imgui.new.bool(false),
+	ogk_max_dist = imgui.new.int(15),
+	ogk_log_corner = imgui.new.int(1),
 	modal_open = imgui.new.bool(false),
 }
 
@@ -362,6 +369,15 @@ local gwarn_binder = {
 	fire_ban_days = 0,
 	server_cmd_fire = "demoute",
 	bind_chat_open = "[]",
+	ogk_enabled = false,
+	ogk_log_title = "Список ОГК",
+	ogk_show_log = true,
+	ogk_show_marker = false,
+	ogk_notify = false,
+	ogk_max_dist = 15,
+	ogk_log_corner = 1,
+	ogk_log_pos_x = nil,
+	ogk_log_pos_y = nil,
 }
 
 local SPEC_BINDER_JSON_PATH = ""
@@ -402,9 +418,218 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
 	{ role = "Помощник Аудитора", name = "Yoshi Swager" },
 	{ role = "Помощник Аудитора", name = "Kirill Mamont" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Ken_Yager" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
+
+local ogk_nearby = {}
+local ogk_notified = {}
+local ogk_staff_lookup = nil
+local ogk_scan_tick = 0
+local save_gwarn_binder_settings
+
+local OGK_LOG_CORNER_FREE = 4
+
+local function vig_ogk_ensure_defaults()
+	if gwarn_binder.ogk_enabled == nil then
+		gwarn_binder.ogk_enabled = false
+	end
+	if type(gwarn_binder.ogk_log_title) ~= "string" or gwarn_binder.ogk_log_title == "" then
+		gwarn_binder.ogk_log_title = "Список ОГК"
+	end
+	if gwarn_binder.ogk_show_log == nil then
+		gwarn_binder.ogk_show_log = true
+	end
+	if gwarn_binder.ogk_show_marker == nil then
+		gwarn_binder.ogk_show_marker = false
+	end
+	if gwarn_binder.ogk_notify == nil then
+		gwarn_binder.ogk_notify = false
+	end
+	gwarn_binder.ogk_max_dist = math.max(0, math.min(15, tonumber(gwarn_binder.ogk_max_dist) or 15))
+	gwarn_binder.ogk_log_corner = math.max(0, math.min(OGK_LOG_CORNER_FREE, tonumber(gwarn_binder.ogk_log_corner) or 1))
+	if not gwarn_binder.ogk_log_pos_x or not gwarn_binder.ogk_log_pos_y then
+		gwarn_binder.ogk_log_pos_x = sizeX * 0.78
+		gwarn_binder.ogk_log_pos_y = sizeY * 0.25
+	end
+end
+
+local function vig_ogk_normalize_compare_name(name)
+	name = tostring(name or "")
+	local tagged = name:match("^%[.-%]%s*(.+)$")
+	if tagged then
+		name = tagged
+	end
+	name = name:gsub("_", " "):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+	return utf8_rupper(name)
+end
+
+local function vig_ogk_get_staff_lookup()
+	if ogk_staff_lookup then
+		return ogk_staff_lookup
+	end
+	ogk_staff_lookup = {}
+	for _, entry in ipairs(OGK_STAFF) do
+		if entry.name ~= "Вакантно" then
+			ogk_staff_lookup[vig_ogk_normalize_compare_name(entry.name)] = entry.role
+		end
+	end
+	return ogk_staff_lookup
+end
+
+local function vig_ogk_corner_pos(corner)
+	local pad = 12 * custom_dpi
+	local w = 220 * custom_dpi
+	corner = tonumber(corner) or 1
+	if corner == 0 then
+		return pad, pad
+	end
+	if corner == 1 then
+		return sizeX - w - pad, pad
+	end
+	if corner == 2 then
+		return pad, sizeY - 200 * custom_dpi - pad
+	end
+	if corner == 3 then
+		return sizeX - w - pad, sizeY - 200 * custom_dpi - pad
+	end
+	return tonumber(gwarn_binder.ogk_log_pos_x) or (sizeX * 0.78), tonumber(gwarn_binder.ogk_log_pos_y) or (sizeY * 0.25)
+end
+
+local function vig_ogk_scan_nearby()
+	if not gwarn_binder.ogk_enabled then
+		return {}
+	end
+	if not sampIsPlayerConnected or not sampGetPlayerNickname or not sampGetCharHandleBySampPlayerId then
+		return {}
+	end
+	local lookup = vig_ogk_get_staff_lookup()
+	local mx, my, mz = getCharCoordinates(PLAYER_PED)
+	local max_dist = tonumber(gwarn_binder.ogk_max_dist) or 15
+	local found = {}
+	for id = 0, 999 do
+		if sampIsPlayerConnected(id) then
+			local nick = tostring(sampGetPlayerNickname(id) or "")
+			local role = lookup[vig_ogk_normalize_compare_name(nick)]
+			if role then
+				local ok, ped = sampGetCharHandleBySampPlayerId(id)
+				if ok and ped and doesCharExist(ped) then
+					local x, y, z = getCharCoordinates(ped)
+					local dist = getDistanceBetweenCoords3d(mx, my, mz, x, y, z)
+					if max_dist <= 0 or dist <= max_dist then
+						found[#found + 1] = {
+							id = id,
+							nick = nick,
+							role = role,
+							dist = dist,
+						}
+					end
+				end
+			end
+		end
+	end
+	table.sort(found, function(a, b)
+		return (a.dist or 0) < (b.dist or 0)
+	end)
+	return found
+end
+
+local function vig_ogk_update_scan()
+	local prev_ids = {}
+	for _, p in ipairs(ogk_nearby) do
+		prev_ids[p.id] = true
+	end
+	ogk_nearby = vig_ogk_scan_nearby()
+	local current_ids = {}
+	for _, p in ipairs(ogk_nearby) do
+		current_ids[p.id] = p
+	end
+	if gwarn_binder.ogk_notify then
+		for id, p in pairs(current_ids) do
+			if not ogk_notified[id] and not prev_ids[id] then
+				ogk_notified[id] = true
+				sampAddChatMessageUtf8(
+					"{009EFF}[Vigmenu — ОГК]{ffffff} Рядом "
+						.. tostring(p.nick)
+						.. " ["
+						.. tostring(id)
+						.. "] — "
+						.. tostring(p.role),
+					message_color
+				)
+			end
+		end
+	end
+	for id in pairs(ogk_notified) do
+		if not current_ids[id] then
+			ogk_notified[id] = nil
+		end
+	end
+end
+
+local function vig_ogk_draw_markers()
+	if not gwarn_binder.ogk_show_marker or #ogk_nearby == 0 then
+		return
+	end
+	local dl = imgui.GetBackgroundDrawList and imgui.GetBackgroundDrawList()
+	if not dl or not dl.AddText then
+		return
+	end
+	local col = imgui.ColorConvertFloat4ToU32(imgui.ImVec4(0.45, 0.75, 1.0, 1.0))
+	for _, p in ipairs(ogk_nearby) do
+		local ok, ped = sampGetCharHandleBySampPlayerId(p.id)
+		if ok and ped and doesCharExist(ped) then
+			local x, y, z = getCharCoordinates(ped)
+			local sx, sy = convert3DCoordsToScreen(x, y, z + 1.05)
+			if sx and sy and sx >= 0 and sy >= 0 and sx <= sizeX and sy <= sizeY then
+				dl:AddText(imgui.ImVec2(sx, sy), col, im_utf8("ОГК"))
+			end
+		end
+	end
+end
+
+local function vig_ogk_draw_log_overlay(player)
+	local title = tostring(gwarn_binder.ogk_log_title or "Список ОГК")
+	local corner = tonumber(gwarn_binder.ogk_log_corner) or OGK_LOG_CORNER_FREE
+	local px, py = vig_ogk_corner_pos(corner)
+	if corner ~= OGK_LOG_CORNER_FREE then
+		imgui.SetNextWindowPos(imgui.ImVec2(px, py), imgui.Cond.Always)
+	else
+		imgui.SetNextWindowPos(imgui.ImVec2(px, py), imgui.Cond.FirstUseEver)
+	end
+	imgui.SetNextWindowSize(imgui.ImVec2(220 * custom_dpi, 0), imgui.Cond.Always)
+	local wflags = imgui.WindowFlags.NoCollapse
+		+ imgui.WindowFlags.AlwaysAutoResize
+		+ imgui.WindowFlags.NoScrollbar
+		+ (imgui.WindowFlags.NoTitleBar or 0)
+	if corner ~= OGK_LOG_CORNER_FREE and imgui.WindowFlags.NoMove then
+		wflags = wflags + imgui.WindowFlags.NoMove
+	end
+	imgui.Begin(im_utf8("##ogk_nearby_log"), nil, wflags)
+	if player and not sampIsChatInputActive() and not sampIsDialogActive() then
+		player.HideCursor = true
+	end
+	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8(title))
+	imgui.Separator()
+	if #ogk_nearby == 0 then
+		imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.55, 1.0), im_utf8("—"))
+	else
+		for i, p in ipairs(ogk_nearby) do
+			imgui.Text(im_utf8(tostring(i) .. ". " .. tostring(p.nick) .. " [" .. tostring(p.id) .. "]"))
+		end
+	end
+	local posX, posY = imgui.GetWindowPos().x, imgui.GetWindowPos().y
+	if corner == OGK_LOG_CORNER_FREE then
+		local sx = tonumber(gwarn_binder.ogk_log_pos_x) or 0
+		local sy = tonumber(gwarn_binder.ogk_log_pos_y) or 0
+		if math.abs(posX - sx) > 1 or math.abs(posY - sy) > 1 then
+			gwarn_binder.ogk_log_pos_x = posX
+			gwarn_binder.ogk_log_pos_y = posY
+			save_gwarn_binder_settings()
+		end
+	end
+	imgui.End()
+end
 
 local function normalize_charbuf_input(buf, max_bytes)
 	local raw = ffi.string(buf, max_bytes)
@@ -1491,6 +1716,34 @@ local function apply_binder_table(data)
 	if type(data.bind_chat_open) == "string" then
 		gwarn_binder.bind_chat_open = data.bind_chat_open
 	end
+	if data.ogk_enabled ~= nil then
+		gwarn_binder.ogk_enabled = data.ogk_enabled and true or false
+	end
+	if type(data.ogk_log_title) == "string" then
+		gwarn_binder.ogk_log_title = data.ogk_log_title
+	end
+	if data.ogk_show_log ~= nil then
+		gwarn_binder.ogk_show_log = data.ogk_show_log and true or false
+	end
+	if data.ogk_show_marker ~= nil then
+		gwarn_binder.ogk_show_marker = data.ogk_show_marker and true or false
+	end
+	if data.ogk_notify ~= nil then
+		gwarn_binder.ogk_notify = data.ogk_notify and true or false
+	end
+	if data.ogk_max_dist ~= nil then
+		gwarn_binder.ogk_max_dist = math.max(0, math.min(15, tonumber(data.ogk_max_dist) or 15))
+	end
+	if data.ogk_log_corner ~= nil then
+		gwarn_binder.ogk_log_corner = math.max(0, math.min(OGK_LOG_CORNER_FREE, tonumber(data.ogk_log_corner) or 1))
+	end
+	if data.ogk_log_pos_x ~= nil then
+		gwarn_binder.ogk_log_pos_x = tonumber(data.ogk_log_pos_x)
+	end
+	if data.ogk_log_pos_y ~= nil then
+		gwarn_binder.ogk_log_pos_y = tonumber(data.ogk_log_pos_y)
+	end
+	vig_ogk_ensure_defaults()
 	return true
 end
 
@@ -1649,6 +1902,14 @@ local function binder_ui_sync_from_runtime()
 	utf8_to_charbuf(tostring(gwarn_binder.fire_ban_days or 0), SpecBinderUi.buf_fire_ban_days, 8)
 	utf8_to_charbuf(get_binder_server_cmd(DISCIPLINE_ACTION_GWARN), SpecBinderUi.buf_cmd_gwarn, 64)
 	utf8_to_charbuf(get_binder_server_cmd(DISCIPLINE_ACTION_FIRE), SpecBinderUi.buf_cmd_fire, 64)
+	vig_ogk_ensure_defaults()
+	SpecBinderUi.ogk_enabled[0] = gwarn_binder.ogk_enabled and true or false
+	SpecBinderUi.ogk_show_log[0] = gwarn_binder.ogk_show_log and true or false
+	SpecBinderUi.ogk_show_marker[0] = gwarn_binder.ogk_show_marker and true or false
+	SpecBinderUi.ogk_notify[0] = gwarn_binder.ogk_notify and true or false
+	SpecBinderUi.ogk_max_dist[0] = tonumber(gwarn_binder.ogk_max_dist) or 15
+	SpecBinderUi.ogk_log_corner[0] = tonumber(gwarn_binder.ogk_log_corner) or 1
+	utf8_to_charbuf(gwarn_binder.ogk_log_title or "Список ОГК", SpecBinderUi.buf_ogk_log_title, 128)
 end
 
 local function clamp_binder_delay_ms(dm)
@@ -1670,6 +1931,26 @@ local function binder_ui_apply_to_runtime()
 	gwarn_binder.fire_ban_days = clamp_fire_ban_days(charbuf_to_utf8(SpecBinderUi.buf_fire_ban_days, 8))
 	gwarn_binder.server_cmd_gwarn = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_gwarn, 64), GWARN_SERVER_CMD)
 	gwarn_binder.server_cmd_fire = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_fire, 64), DEMOTE_SERVER_CMD)
+	gwarn_binder.ogk_enabled = SpecBinderUi.ogk_enabled[0] and true or false
+	gwarn_binder.ogk_show_log = SpecBinderUi.ogk_show_log[0] and true or false
+	gwarn_binder.ogk_show_marker = SpecBinderUi.ogk_show_marker[0] and true or false
+	gwarn_binder.ogk_notify = SpecBinderUi.ogk_notify[0] and true or false
+	gwarn_binder.ogk_max_dist = math.max(0, math.min(15, tonumber(SpecBinderUi.ogk_max_dist[0]) or 15))
+	gwarn_binder.ogk_log_corner = math.max(0, math.min(OGK_LOG_CORNER_FREE, tonumber(SpecBinderUi.ogk_log_corner[0]) or 1))
+	gwarn_binder.ogk_log_title = charbuf_to_utf8(SpecBinderUi.buf_ogk_log_title, 128)
+	if gwarn_binder.ogk_log_title == "" then
+		gwarn_binder.ogk_log_title = "Список ОГК"
+	end
+	if gwarn_binder.ogk_log_corner ~= OGK_LOG_CORNER_FREE then
+		gwarn_binder.ogk_log_pos_x, gwarn_binder.ogk_log_pos_y = vig_ogk_corner_pos(gwarn_binder.ogk_log_corner)
+	end
+	vig_ogk_ensure_defaults()
+	if not gwarn_binder.ogk_enabled then
+		ogk_nearby = {}
+		for id in pairs(ogk_notified) do
+			ogk_notified[id] = nil
+		end
+	end
 end
 
 local function build_discipline_chat_line(player_id, article_reason, action_type)
@@ -1710,7 +1991,7 @@ local function try_register_gwarn_binder_hotkey()
 	end)
 end
 
-local function save_gwarn_binder_settings()
+save_gwarn_binder_settings = function()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
 	local f, err = io.open(SPEC_BINDER_JSON_PATH, "w")
 	if not f then
@@ -1727,6 +2008,15 @@ local function save_gwarn_binder_settings()
 			server_cmd_gwarn = gwarn_binder.server_cmd_gwarn,
 			server_cmd_fire = gwarn_binder.server_cmd_fire,
 			bind_chat_open = gwarn_binder.bind_chat_open,
+			ogk_enabled = gwarn_binder.ogk_enabled and true or false,
+			ogk_log_title = gwarn_binder.ogk_log_title,
+			ogk_show_log = gwarn_binder.ogk_show_log and true or false,
+			ogk_show_marker = gwarn_binder.ogk_show_marker and true or false,
+			ogk_notify = gwarn_binder.ogk_notify and true or false,
+			ogk_max_dist = tonumber(gwarn_binder.ogk_max_dist) or 15,
+			ogk_log_corner = tonumber(gwarn_binder.ogk_log_corner) or 1,
+			ogk_log_pos_x = tonumber(gwarn_binder.ogk_log_pos_x),
+			ogk_log_pos_y = tonumber(gwarn_binder.ogk_log_pos_y),
 		})
 	)
 	f:write("\n")
@@ -1745,6 +2035,15 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
 	gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
 	gwarn_binder.bind_chat_open = "[]"
+	gwarn_binder.ogk_enabled = false
+	gwarn_binder.ogk_log_title = "Список ОГК"
+	gwarn_binder.ogk_show_log = true
+	gwarn_binder.ogk_show_marker = false
+	gwarn_binder.ogk_notify = false
+	gwarn_binder.ogk_max_dist = 15
+	gwarn_binder.ogk_log_corner = 1
+	gwarn_binder.ogk_log_pos_x = sizeX * 0.78
+	gwarn_binder.ogk_log_pos_y = sizeY * 0.25
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
 		create_user_binder_from_default()
 	end
@@ -1766,6 +2065,7 @@ local function load_gwarn_binder_settings()
 		end
 	end
 	try_register_gwarn_binder_hotkey()
+	vig_ogk_ensure_defaults()
 end
 
 local function apply_binder_placeholders(line, player_id, reason)
@@ -1998,6 +2298,68 @@ local function vig_render_binder_update_tab()
 	end
 end
 
+local function vig_render_ogk_tracker_settings_tab(panel_h)
+	local list_h = vig_binder_tab_inner_height(panel_h, 0)
+	imgui.BeginChild("##ogk_tracker_settings_scroll", imgui.ImVec2(0, list_h), true)
+	imgui.TextWrapped(
+		im_utf8(
+			"Поиск сотрудников ОГК среди игроков рядом. Сопоставление: «Kane Drake» в списке = Kane_Drake в игре. «Вакантно» не учитывается."
+		)
+	)
+	imgui.Spacing()
+	imgui.Checkbox(im_utf8("Включить отображение ОГК##ogk_en"), SpecBinderUi.ogk_enabled)
+	imgui.Spacing()
+	imgui.Text(im_utf8("Заголовок лога:"))
+	imgui.InputText("##ogk_log_title", SpecBinderUi.buf_ogk_log_title, 128)
+	imgui.Spacing()
+	imgui.Checkbox(im_utf8("Показывать лог (список в углу)##ogk_log"), SpecBinderUi.ogk_show_log)
+	imgui.Checkbox(im_utf8("Показывать маркер «ОГК» над головой##ogk_mrk"), SpecBinderUi.ogk_show_marker)
+	imgui.Checkbox(im_utf8("Оповещение в чат при появлении##ogk_ntf"), SpecBinderUi.ogk_notify)
+	imgui.Spacing()
+	imgui.Text(im_utf8("Радиус (м):"))
+	if imgui.SliderInt("##ogk_dist", SpecBinderUi.ogk_max_dist, 0, 15, im_utf8("%d м")) then
+		if SpecBinderUi.ogk_max_dist[0] < 0 then
+			SpecBinderUi.ogk_max_dist[0] = 0
+		end
+		if SpecBinderUi.ogk_max_dist[0] > 15 then
+			SpecBinderUi.ogk_max_dist[0] = 15
+		end
+	end
+	if SpecBinderUi.ogk_max_dist[0] == 0 then
+		imgui.TextColored(
+			imgui.ImVec4(0.55, 0.55, 0.6, 1.0),
+			im_utf8("0 м — вся зона прорисовки (без фильтра по метрам)")
+		)
+	end
+	imgui.Spacing()
+	imgui.Text(im_utf8("Положение лога:"))
+	local corner_labels = {
+		im_utf8("Слева сверху"),
+		im_utf8("Справа сверху"),
+		im_utf8("Слева снизу"),
+		im_utf8("Справа снизу"),
+		im_utf8("Свободно (перетащить)"),
+	}
+	local corner_idx = (tonumber(SpecBinderUi.ogk_log_corner[0]) or 1) + 1
+	if corner_idx < 1 or corner_idx > #corner_labels then
+		corner_idx = 2
+	end
+	if imgui.BeginCombo("##ogk_corner", corner_labels[corner_idx]) then
+		for i = 0, OGK_LOG_CORNER_FREE do
+			if imgui.Selectable(corner_labels[i + 1], SpecBinderUi.ogk_log_corner[0] == i) then
+				SpecBinderUi.ogk_log_corner[0] = i
+			end
+		end
+		imgui.EndCombo()
+	end
+	imgui.Spacing()
+	imgui.TextColored(
+		imgui.ImVec4(0.5, 0.55, 0.65, 1.0),
+		im_utf8("Настройки сохраняются в VigGwarnBinder.json и остаются после перезахода на сервер.")
+	)
+	imgui.EndChild()
+end
+
 local log_date_expanded = {}
 
 local function vig_render_discipline_log_content(panel_h)
@@ -2084,6 +2446,10 @@ local function vig_render_binder_settings_tabs(panel_h)
 		end
 		if imgui.BeginTabItem(im_utf8("Сотрудники ОГК##binder_tab_ogk")) then
 			vig_render_ogk_staff_content(panel_h)
+			imgui.EndTabItem()
+		end
+		if imgui.BeginTabItem(im_utf8("Отображение ОГК##binder_tab_ogk_track")) then
+			vig_render_ogk_tracker_settings_tab(panel_h)
 			imgui.EndTabItem()
 		end
 		if imgui.BeginTabItem(im_utf8("Лог##binder_tab_log")) then
@@ -2651,7 +3017,7 @@ function register_spec_imgui()
 					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(footer_btn_w, binder_footer_btn_h)) then
 						binder_ui_apply_to_runtime()
 						save_gwarn_binder_settings()
-						sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Настройки отыгровки сохранены.", message_color)
+						sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Настройки сохранены.", message_color)
 						imgui.CloseCurrentPopup()
 					end
 					imgui.SameLine()
@@ -2799,6 +3165,25 @@ function register_spec_imgui()
 				imgui.EndChild()
 			end
 			imgui.End()
+		end
+	)
+	imgui.OnFrame(
+		function()
+			return gwarn_binder.ogk_enabled and true or false
+		end,
+		function(player)
+			vig_spec_ensure_theme_once()
+			ogk_scan_tick = ogk_scan_tick + 1
+			if ogk_scan_tick >= 12 then
+				ogk_scan_tick = 0
+				vig_ogk_update_scan()
+			end
+			if gwarn_binder.ogk_show_marker then
+				vig_ogk_draw_markers()
+			end
+			if gwarn_binder.ogk_show_log then
+				vig_ogk_draw_log_overlay(player)
+			end
 		end
 	)
 	spec_imgui_ready = true
