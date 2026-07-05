@@ -1,6 +1,6 @@
 {
-  "current_version": "6.0.13",
-  "update_info": "Исправлен краш при открытии настроек «Отображение»",
+  "current_version": "6.0.14",
+  "update_info": "Компактные строки в списке ников с тегами",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",
