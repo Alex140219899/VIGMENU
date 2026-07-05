@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.17")
+script_version("6.0.18")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.17"
+local SCRIPT_VERSION_TEXT = "6.0.18"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -498,6 +498,17 @@ local function vig_ogk_get_staff_lookup()
 	return ogk_staff_lookup
 end
 
+local function vig_ogk_get_tagged_norm_set()
+	local set = {}
+	for _, entry in ipairs(gwarn_binder.ogk_tagged_nicks or {}) do
+		local norm = vig_ogk_normalize_compare_name(entry.nick)
+		if norm ~= "" then
+			set[norm] = true
+		end
+	end
+	return set
+end
+
 local function vig_ogk_corner_pos(corner)
 	local pad = 12 * custom_dpi
 	local w = 280 * custom_dpi
@@ -645,7 +656,7 @@ local function vig_ogk_fix_log_position()
 	ogk_reopen_binder_modal = true
 	save_gwarn_binder_settings()
 	sampAddChatMessageUtf8(
-		"{009EFF}[Vigmenu]{ffffff} Положение списка ОГК сохранено.",
+		"{009EFF}[Vigmenu]{ffffff} Положение сохранено.",
 		message_color
 	)
 	return true
@@ -669,14 +680,16 @@ local function vig_ogk_scan_nearby()
 		return {}
 	end
 	local lookup = vig_ogk_get_staff_lookup()
+	local tagged_set = vig_ogk_get_tagged_norm_set()
 	local mx, my, mz = getCharCoordinates(PLAYER_PED)
 	local max_dist = tonumber(gwarn_binder.ogk_max_dist) or 15
 	local found = {}
 	for id = 0, 999 do
 		if sampIsPlayerConnected(id) then
 			local nick = tostring(sampGetPlayerNickname(id) or "")
-			local role = lookup[vig_ogk_normalize_compare_name(nick)]
-			if role then
+			local norm = vig_ogk_normalize_compare_name(nick)
+			local role = lookup[norm]
+			if role or tagged_set[norm] then
 				local ok, ped = sampGetCharHandleBySampPlayerId(id)
 				if ok and ped and doesCharExist(ped) then
 					local x, y, z = getCharCoordinates(ped)
@@ -719,7 +732,7 @@ local function vig_ogk_update_scan()
 						.. " ["
 						.. tostring(id)
 						.. "] — "
-						.. tostring(p.role),
+						.. tostring(p.role or vig_ogk_get_tag_for_nick(p.nick) or "в списке"),
 					message_color
 				)
 			end
@@ -2476,7 +2489,7 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 	imgui.BeginChild("##ogk_tracker_settings_scroll", imgui.ImVec2(0, list_h), true)
 	imgui.TextWrapped(
 		im_utf8(
-			"Поиск сотрудников ОГК среди игроков рядом. Сопоставление: «Kane Drake» в списке = Kane_Drake в игре. «Вакантно» не учитывается."
+			"Показывает сотрудников ОГК и добавленные вами ники рядом. В штате «Ken Yager» = Ken_Yager в игре. «Вакантно» не учитывается. Свой ник с тегом в логе: [тег] Ken_Yager [id] — расстояние."
 		)
 	)
 	imgui.Spacing()
@@ -2589,7 +2602,7 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 	end
 	imgui.TextColored(
 		imgui.ImVec4(0.5, 0.55, 0.65, 1.0),
-		im_utf8("Настройки скроются — перетащите список и нажмите «Зафиксировать». Меню вернётся само.")
+		im_utf8("Настройки скроются — перетащите окно и нажмите «Зафиксировать». Меню вернётся само.")
 	)
 	imgui.Spacing()
 	imgui.TextColored(
