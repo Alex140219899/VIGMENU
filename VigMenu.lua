@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.15")
+script_version("6.0.16")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.15"
+local SCRIPT_VERSION_TEXT = "6.0.16"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2505,44 +2505,38 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 		end
 	end
 	imgui.Spacing()
-	imgui.Text(im_utf8("Добавленные ники (нажмите на тег или ник для изменения):"))
+	imgui.Text(im_utf8("Добавленные ники (нажмите на строку для изменения):"))
 	local tagged = gwarn_binder.ogk_tagged_nicks or {}
 	if #tagged == 0 then
 		imgui.TextColored(imgui.ImVec4(0.55, 0.55, 0.6, 1.0), im_utf8("—"))
 	else
-		local sel_pad = 10 * custom_dpi
 		local del_w = 72 * custom_dpi
+		local row_gap = 8 * custom_dpi
 		for i, entry in ipairs(tagged) do
 			local tag_text = vig_ogk_trim(entry.tag)
-			if tag_text == "" then
-				tag_text = "—"
-			end
 			local nick_text = vig_ogk_trim(entry.nick)
+			local row_label = nick_text
+			if tag_text ~= "" and nick_text ~= "" then
+				row_label = tag_text .. "  " .. nick_text
+			elseif tag_text ~= "" then
+				row_label = tag_text
+			elseif nick_text == "" then
+				row_label = "—"
+			end
 			local editing = ogk_tag_edit_idx == i
-			local tag_w = sel_pad
-			local nick_w = sel_pad
-			pcall(function()
-				tag_w = imgui.CalcTextSize(im_utf8(tag_text)).x + sel_pad
-				nick_w = imgui.CalcTextSize(im_utf8(nick_text)).x + sel_pad
-			end)
+			local row_w = imgui.GetContentRegionAvail().x - del_w - row_gap
+			if row_w < 80 * custom_dpi then
+				row_w = 80 * custom_dpi
+			end
 			if imgui.Selectable(
-				im_utf8(tag_text .. "##ogk_list_tag_" .. i),
+				im_utf8(row_label .. "##ogk_list_row_" .. i),
 				editing,
 				0,
-				imgui.ImVec2(tag_w, 0)
+				imgui.ImVec2(row_w, 0)
 			) then
 				vig_ogk_start_edit_tagged_nick(i)
 			end
-			imgui.SameLine(0, 4 * custom_dpi)
-			if imgui.Selectable(
-				im_utf8(nick_text .. "##ogk_list_nick_" .. i),
-				editing,
-				0,
-				imgui.ImVec2(nick_w, 0)
-			) then
-				vig_ogk_start_edit_tagged_nick(i)
-			end
-			imgui.SameLine(0, 8 * custom_dpi)
+			imgui.SameLine(0, row_gap)
 			if imgui.Button(im_utf8("Удалить##ogk_list_del_" .. i), imgui.ImVec2(del_w, 0)) then
 				vig_ogk_remove_tagged_nick(i)
 			end
