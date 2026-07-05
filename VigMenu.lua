@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.7")
+script_version("6.0.8")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.7"
+local SCRIPT_VERSION_TEXT = "6.0.8"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -419,13 +419,14 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Yoshi Swager" },
 	{ role = "Помощник Аудитора", name = "Kirill Mamont" },
 	{ role = "Помощник Аудитора", name = "George_Novikovt" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Ken_Yager" },
 }
 
 local ogk_nearby = {}
 local ogk_notified = {}
 local ogk_staff_lookup = nil
 local ogk_scan_tick = 0
+local ogk_log_move_mode = false
 local save_gwarn_binder_settings
 
 local OGK_LOG_CORNER_FREE = 4
@@ -479,7 +480,7 @@ end
 
 local function vig_ogk_corner_pos(corner)
 	local pad = 12 * custom_dpi
-	local w = 220 * custom_dpi
+	local w = 280 * custom_dpi
 	corner = tonumber(corner) or 1
 	if corner == 0 then
 		return pad, pad
@@ -494,6 +495,23 @@ local function vig_ogk_corner_pos(corner)
 		return sizeX - w - pad, sizeY - 200 * custom_dpi - pad
 	end
 	return tonumber(gwarn_binder.ogk_log_pos_x) or (sizeX * 0.78), tonumber(gwarn_binder.ogk_log_pos_y) or (sizeY * 0.25)
+end
+
+local function vig_ogk_fix_log_position()
+	local px = tonumber(gwarn_binder.ogk_log_pos_x)
+	local py = tonumber(gwarn_binder.ogk_log_pos_y)
+	if not px or not py then
+		return false
+	end
+	gwarn_binder.ogk_log_corner = OGK_LOG_CORNER_FREE
+	SpecBinderUi.ogk_log_corner[0] = OGK_LOG_CORNER_FREE
+	ogk_log_move_mode = false
+	save_gwarn_binder_settings()
+	sampAddChatMessageUtf8(
+		"{009EFF}[Vigmenu]{ffffff} Положение списка ОГК сохранено.",
+		message_color
+	)
+	return true
 end
 
 local function vig_ogk_scan_nearby()
@@ -591,44 +609,80 @@ end
 local function vig_ogk_draw_log_overlay(player)
 	local title = tostring(gwarn_binder.ogk_log_title or "Список ОГК")
 	local corner = tonumber(gwarn_binder.ogk_log_corner) or OGK_LOG_CORNER_FREE
-	local px, py = vig_ogk_corner_pos(corner)
-	if corner ~= OGK_LOG_CORNER_FREE then
-		imgui.SetNextWindowPos(imgui.ImVec2(px, py), imgui.Cond.Always)
-	else
-		imgui.SetNextWindowPos(imgui.ImVec2(px, py), imgui.Cond.FirstUseEver)
+	if ogk_log_move_mode then
+		corner = OGK_LOG_CORNER_FREE
 	end
-	imgui.SetNextWindowSize(imgui.ImVec2(220 * custom_dpi, 0), imgui.Cond.Always)
+	local px, py = vig_ogk_corner_pos(corner)
 	local wflags = imgui.WindowFlags.NoCollapse
 		+ imgui.WindowFlags.AlwaysAutoResize
 		+ imgui.WindowFlags.NoScrollbar
 		+ (imgui.WindowFlags.NoTitleBar or 0)
-	if corner ~= OGK_LOG_CORNER_FREE and imgui.WindowFlags.NoMove then
-		wflags = wflags + imgui.WindowFlags.NoMove
+	if ogk_log_move_mode then
+		imgui.SetNextWindowPos(imgui.ImVec2(px, py), imgui.Cond.Appearing)
+	else
+		imgui.SetNextWindowPos(imgui.ImVec2(px, py), imgui.Cond.Always)
+		if imgui.WindowFlags.NoMove then
+			wflags = wflags + imgui.WindowFlags.NoMove
+		end
 	end
+	imgui.SetNextWindowSize(imgui.ImVec2(280 * custom_dpi, 0), imgui.Cond.Always)
+	imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.04, 0.05, 0.07, 0.35))
+	imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0, 0, 0, 0))
+	imgui.PushStyleColor(imgui.Col.Border, imgui.ImVec4(0.45, 0.75, 1.0, 0.78))
+	imgui.PushStyleVar(imgui.StyleVar.WindowBorderSize, 1.5 * custom_dpi)
+	imgui.PushStyleVar(imgui.StyleVar.WindowPadding, imgui.ImVec2(10 * custom_dpi, 8 * custom_dpi))
 	imgui.Begin(im_utf8("##ogk_nearby_log"), nil, wflags)
-	if player and not sampIsChatInputActive() and not sampIsDialogActive() then
+	if not ogk_log_move_mode and player and not sampIsChatInputActive() and not sampIsDialogActive() then
 		player.HideCursor = true
 	end
-	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8(title))
+	if ogk_log_move_mode then
+		imgui.TextColored(imgui.ImVec4(1.0, 0.82, 0.35, 0.95), im_utf8("Перетащите окно мышью"))
+	end
+	imgui.TextColored(imgui.ImVec4(0.55, 0.85, 1.0, 0.92), im_utf8(title))
+	imgui.PushStyleColor(imgui.Col.Separator, imgui.ImVec4(0.45, 0.75, 1.0, 0.42))
 	imgui.Separator()
+	imgui.PopStyleColor()
 	if #ogk_nearby == 0 then
-		imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.55, 1.0), im_utf8("—"))
+		imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.8, 0.7), im_utf8("—"))
 	else
 		for i, p in ipairs(ogk_nearby) do
-			imgui.Text(im_utf8(tostring(i) .. ". " .. tostring(p.nick) .. " [" .. tostring(p.id) .. "]"))
+			imgui.TextColored(
+				imgui.ImVec4(0.93, 0.94, 0.96, 0.88),
+				im_utf8(tostring(i) .. ". " .. tostring(p.nick) .. " [" .. tostring(p.id) .. "]")
+			)
 		end
 	end
-	local posX, posY = imgui.GetWindowPos().x, imgui.GetWindowPos().y
-	if corner == OGK_LOG_CORNER_FREE then
-		local sx = tonumber(gwarn_binder.ogk_log_pos_x) or 0
-		local sy = tonumber(gwarn_binder.ogk_log_pos_y) or 0
-		if math.abs(posX - sx) > 1 or math.abs(posY - sy) > 1 then
-			gwarn_binder.ogk_log_pos_x = posX
-			gwarn_binder.ogk_log_pos_y = posY
-			save_gwarn_binder_settings()
+	if ogk_log_move_mode then
+		imgui.Spacing()
+		imgui.Separator()
+		if imgui.Button(im_utf8("Зафиксировать##ogk_log_fix"), imgui.ImVec2(-1, 26 * custom_dpi)) then
+			gwarn_binder.ogk_log_pos_x = imgui.GetWindowPos().x
+			gwarn_binder.ogk_log_pos_y = imgui.GetWindowPos().y
+			vig_ogk_fix_log_position()
 		end
+	else
+		local posX, posY = imgui.GetWindowPos().x, imgui.GetWindowPos().y
+		local posW, posH = imgui.GetWindowSize().x, imgui.GetWindowSize().y
+		local fg = imgui.GetForegroundDrawList and imgui.GetForegroundDrawList()
+		if fg and fg.AddRect then
+			local border = imgui.ColorConvertFloat4ToU32(imgui.ImVec4(0.45, 0.75, 1.0, 0.82))
+			fg:AddRect(
+				imgui.ImVec2(posX, posY),
+				imgui.ImVec2(posX + posW, posY + posH),
+				border,
+				6 * custom_dpi,
+				0,
+				1.5 * custom_dpi
+			)
+		end
+	end
+	if ogk_log_move_mode then
+		gwarn_binder.ogk_log_pos_x = imgui.GetWindowPos().x
+		gwarn_binder.ogk_log_pos_y = imgui.GetWindowPos().y
 	end
 	imgui.End()
+	imgui.PopStyleVar(2)
+	imgui.PopStyleColor(3)
 end
 
 local function normalize_charbuf_input(buf, max_bytes)
@@ -1947,6 +2001,7 @@ local function binder_ui_apply_to_runtime()
 	vig_ogk_ensure_defaults()
 	if not gwarn_binder.ogk_enabled then
 		ogk_nearby = {}
+		ogk_log_move_mode = false
 		for id in pairs(ogk_notified) do
 			ogk_notified[id] = nil
 		end
@@ -2338,7 +2393,7 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 		im_utf8("Справа сверху"),
 		im_utf8("Слева снизу"),
 		im_utf8("Справа снизу"),
-		im_utf8("Свободно (перетащить)"),
+		im_utf8("Своё положение"),
 	}
 	local corner_idx = (tonumber(SpecBinderUi.ogk_log_corner[0]) or 1) + 1
 	if corner_idx < 1 or corner_idx > #corner_labels then
@@ -2348,9 +2403,30 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 		for i = 0, OGK_LOG_CORNER_FREE do
 			if imgui.Selectable(corner_labels[i + 1], SpecBinderUi.ogk_log_corner[0] == i) then
 				SpecBinderUi.ogk_log_corner[0] = i
+				ogk_log_move_mode = false
 			end
 		end
 		imgui.EndCombo()
+	end
+	imgui.Spacing()
+	if ogk_log_move_mode then
+		imgui.TextColored(
+			imgui.ImVec4(1.0, 0.82, 0.35, 1.0),
+			im_utf8("Режим перемещения: перетащите список на экране и нажмите «Зафиксировать».")
+		)
+		if imgui.Button(im_utf8("Зафиксировать положение##ogk_fix_set"), imgui.ImVec2(280 * custom_dpi, 28 * custom_dpi)) then
+			vig_ogk_fix_log_position()
+		end
+	else
+		if imgui.Button(im_utf8("Изменить расположение##ogk_move_set"), imgui.ImVec2(280 * custom_dpi, 28 * custom_dpi)) then
+			ogk_log_move_mode = true
+			gwarn_binder.ogk_log_corner = OGK_LOG_CORNER_FREE
+			SpecBinderUi.ogk_log_corner[0] = OGK_LOG_CORNER_FREE
+		end
+		imgui.TextColored(
+			imgui.ImVec4(0.5, 0.55, 0.65, 1.0),
+			im_utf8("Список станет полупрозрачным (~65%). Перетащите и зафиксируйте — позиция сохранится.")
+		)
 	end
 	imgui.Spacing()
 	imgui.TextColored(
@@ -3181,7 +3257,7 @@ function register_spec_imgui()
 			if gwarn_binder.ogk_show_marker then
 				vig_ogk_draw_markers()
 			end
-			if gwarn_binder.ogk_show_log then
+			if gwarn_binder.ogk_show_log or ogk_log_move_mode then
 				vig_ogk_draw_log_overlay(player)
 			end
 		end
