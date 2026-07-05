@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.10")
+script_version("6.0.11")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.10"
+local SCRIPT_VERSION_TEXT = "6.0.11"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -349,11 +349,14 @@ local SpecBinderUi = {
 	buf_ogk_search = imgui.new.char[256](),
 	buf_log_search = imgui.new.char[256](),
 	buf_ogk_log_title = imgui.new.char[128](),
+	buf_ogk_self_nick = imgui.new.char[128](),
+	buf_ogk_self_tag = imgui.new.char[64](),
 	ogk_enabled = imgui.new.bool(false),
 	ogk_show_log = imgui.new.bool(true),
 	ogk_notify = imgui.new.bool(false),
 	ogk_max_dist = imgui.new.int(15),
 	ogk_log_corner = imgui.new.int(1),
+	ogk_self_tag_place = imgui.new.int(0),
 	modal_open = imgui.new.bool(false),
 }
 
@@ -369,13 +372,16 @@ local gwarn_binder = {
 	server_cmd_fire = "demoute",
 	bind_chat_open = "[]",
 	ogk_enabled = false,
-	ogk_log_title = "Список ОГК",
+	ogk_log_title = "Отображение",
 	ogk_show_log = true,
 	ogk_notify = false,
 	ogk_max_dist = 15,
 	ogk_log_corner = 1,
 	ogk_log_pos_x = nil,
 	ogk_log_pos_y = nil,
+	ogk_self_nick = "",
+	ogk_self_tag = "",
+	ogk_self_tag_place = 0,
 }
 
 local SPEC_BINDER_JSON_PATH = ""
@@ -429,14 +435,20 @@ local ogk_reopen_binder_modal = false
 local save_gwarn_binder_settings
 
 local OGK_LOG_CORNER_FREE = 4
+local OGK_TAG_AFTER_ID = 1
 
 local function vig_ogk_ensure_defaults()
 	if gwarn_binder.ogk_enabled == nil then
 		gwarn_binder.ogk_enabled = false
 	end
-	if type(gwarn_binder.ogk_log_title) ~= "string" or gwarn_binder.ogk_log_title == "" then
-		gwarn_binder.ogk_log_title = "Список ОГК"
+	gwarn_binder.ogk_log_title = "Отображение"
+	if type(gwarn_binder.ogk_self_nick) ~= "string" then
+		gwarn_binder.ogk_self_nick = ""
 	end
+	if type(gwarn_binder.ogk_self_tag) ~= "string" then
+		gwarn_binder.ogk_self_tag = ""
+	end
+	gwarn_binder.ogk_self_tag_place = tonumber(gwarn_binder.ogk_self_tag_place) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
 	if gwarn_binder.ogk_show_log == nil then
 		gwarn_binder.ogk_show_log = true
 	end
@@ -499,6 +511,46 @@ local function vig_ogk_format_dist_m(dist)
 		return string.format("%.1f м", dist)
 	end
 	return tostring(math.floor(dist + 0.5)) .. " м"
+end
+
+local function vig_ogk_get_self_nick_norm()
+	local s = tostring(gwarn_binder.ogk_self_nick or ""):match("^%s*(.-)%s*$") or ""
+	if s == "" then
+		return ""
+	end
+	return vig_ogk_normalize_compare_name(s)
+end
+
+local function vig_ogk_format_player_line(index, p)
+	local nick = tostring(p.nick or "")
+	local id = tostring(p.id or "")
+	local dist = vig_ogk_format_dist_m(p.dist)
+	local tag = tostring(gwarn_binder.ogk_self_tag or ""):match("^%s*(.-)%s*$") or ""
+	local self_norm = vig_ogk_get_self_nick_norm()
+	local prefix = tostring(index) .. ". "
+	if tag ~= "" and self_norm ~= "" and vig_ogk_normalize_compare_name(nick) == self_norm then
+		if tonumber(gwarn_binder.ogk_self_tag_place) == OGK_TAG_AFTER_ID then
+			return prefix .. nick .. " [" .. id .. "] " .. tag .. " — " .. dist
+		end
+		return prefix .. tag .. " " .. nick .. " [" .. id .. "] — " .. dist
+	end
+	return prefix .. nick .. " [" .. id .. "] — " .. dist
+end
+
+local function vig_ogk_draw_log_border(posX, posY, posW, posH)
+	local fg = imgui.GetForegroundDrawList and imgui.GetForegroundDrawList()
+	if not fg or not fg.AddRect then
+		return
+	end
+	local border = imgui.ColorConvertFloat4ToU32(imgui.ImVec4(0.45, 0.75, 1.0, 0.82))
+	fg:AddRect(
+		imgui.ImVec2(posX, posY),
+		imgui.ImVec2(posX + posW, posY + posH),
+		border,
+		6 * custom_dpi,
+		0,
+		1.5 * custom_dpi
+	)
 end
 
 local function vig_ogk_fix_log_position()
@@ -601,7 +653,7 @@ local function vig_ogk_update_scan()
 end
 
 local function vig_ogk_draw_log_overlay(player)
-	local title = tostring(gwarn_binder.ogk_log_title or "Список ОГК")
+	local title = "Отображение"
 	local corner = tonumber(gwarn_binder.ogk_log_corner) or OGK_LOG_CORNER_FREE
 	if ogk_log_move_mode then
 		corner = OGK_LOG_CORNER_FREE
@@ -620,12 +672,16 @@ local function vig_ogk_draw_log_overlay(player)
 		end
 	end
 	imgui.SetNextWindowSize(imgui.ImVec2(280 * custom_dpi, 0), imgui.Cond.Always)
+	local st = imgui.GetStyle and imgui.GetStyle()
+	local old_border = st and st.WindowBorderSize or 0
+	if st then
+		st.WindowBorderSize = 0
+	end
 	local ogk_style_pushed = 0
 	if imgui.PushStyleColor then
 		imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.04, 0.05, 0.07, 0.35))
 		imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0, 0, 0, 0))
-		imgui.PushStyleColor(imgui.Col.Border, imgui.ImVec4(0.45, 0.75, 1.0, 0.78))
-		ogk_style_pushed = 3
+		ogk_style_pushed = 2
 	end
 	imgui.Begin(im_utf8("##ogk_nearby_log"), nil, wflags)
 	if not ogk_log_move_mode and player and not sampIsChatInputActive() and not sampIsDialogActive() then
@@ -646,48 +702,30 @@ local function vig_ogk_draw_log_overlay(player)
 		imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.8, 0.7), im_utf8("—"))
 	else
 		for i, p in ipairs(ogk_nearby) do
-			local line = tostring(i)
-				.. ". "
-				.. tostring(p.nick)
-				.. " ["
-				.. tostring(p.id)
-				.. "] — "
-				.. vig_ogk_format_dist_m(p.dist)
 			imgui.TextColored(
 				imgui.ImVec4(0.93, 0.94, 0.96, 0.88),
-				im_utf8(line)
+				im_utf8(vig_ogk_format_player_line(i, p))
 			)
 		end
 	end
+	local posX, posY = imgui.GetWindowPos().x, imgui.GetWindowPos().y
+	local posW, posH = imgui.GetWindowSize().x, imgui.GetWindowSize().y
 	if ogk_log_move_mode then
+		gwarn_binder.ogk_log_pos_x = posX
+		gwarn_binder.ogk_log_pos_y = posY
 		imgui.Spacing()
 		imgui.Separator()
 		if imgui.Button(im_utf8("Зафиксировать##ogk_log_fix"), imgui.ImVec2(-1, 26 * custom_dpi)) then
-			gwarn_binder.ogk_log_pos_x = imgui.GetWindowPos().x
-			gwarn_binder.ogk_log_pos_y = imgui.GetWindowPos().y
+			gwarn_binder.ogk_log_pos_x = posX
+			gwarn_binder.ogk_log_pos_y = posY
 			vig_ogk_fix_log_position()
 		end
-	else
-		local posX, posY = imgui.GetWindowPos().x, imgui.GetWindowPos().y
-		local posW, posH = imgui.GetWindowSize().x, imgui.GetWindowSize().y
-		local fg = imgui.GetForegroundDrawList and imgui.GetForegroundDrawList()
-		if fg and fg.AddRect then
-			local border = imgui.ColorConvertFloat4ToU32(imgui.ImVec4(0.45, 0.75, 1.0, 0.82))
-			fg:AddRect(
-				imgui.ImVec2(posX, posY),
-				imgui.ImVec2(posX + posW, posY + posH),
-				border,
-				6 * custom_dpi,
-				0,
-				1.5 * custom_dpi
-			)
-		end
-	end
-	if ogk_log_move_mode then
-		gwarn_binder.ogk_log_pos_x = imgui.GetWindowPos().x
-		gwarn_binder.ogk_log_pos_y = imgui.GetWindowPos().y
 	end
 	imgui.End()
+	if st then
+		st.WindowBorderSize = old_border
+	end
+	vig_ogk_draw_log_border(posX, posY, posW, posH)
 	if ogk_style_pushed > 0 and imgui.PopStyleColor then
 		imgui.PopStyleColor(ogk_style_pushed)
 	end
@@ -1802,6 +1840,15 @@ local function apply_binder_table(data)
 	if data.ogk_log_pos_y ~= nil then
 		gwarn_binder.ogk_log_pos_y = tonumber(data.ogk_log_pos_y)
 	end
+	if type(data.ogk_self_nick) == "string" then
+		gwarn_binder.ogk_self_nick = data.ogk_self_nick
+	end
+	if type(data.ogk_self_tag) == "string" then
+		gwarn_binder.ogk_self_tag = data.ogk_self_tag
+	end
+	if data.ogk_self_tag_place ~= nil then
+		gwarn_binder.ogk_self_tag_place = tonumber(data.ogk_self_tag_place) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
+	end
 	vig_ogk_ensure_defaults()
 	return true
 end
@@ -1967,7 +2014,9 @@ local function binder_ui_sync_from_runtime()
 	SpecBinderUi.ogk_notify[0] = gwarn_binder.ogk_notify and true or false
 	SpecBinderUi.ogk_max_dist[0] = tonumber(gwarn_binder.ogk_max_dist) or 15
 	SpecBinderUi.ogk_log_corner[0] = tonumber(gwarn_binder.ogk_log_corner) or 1
-	utf8_to_charbuf(gwarn_binder.ogk_log_title or "Список ОГК", SpecBinderUi.buf_ogk_log_title, 128)
+	utf8_to_charbuf(gwarn_binder.ogk_self_nick or "", SpecBinderUi.buf_ogk_self_nick, 128)
+	utf8_to_charbuf(gwarn_binder.ogk_self_tag or "", SpecBinderUi.buf_ogk_self_tag, 64)
+	SpecBinderUi.ogk_self_tag_place[0] = tonumber(gwarn_binder.ogk_self_tag_place) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
 end
 
 local function clamp_binder_delay_ms(dm)
@@ -1994,10 +2043,10 @@ local function binder_ui_apply_to_runtime()
 	gwarn_binder.ogk_notify = SpecBinderUi.ogk_notify[0] and true or false
 	gwarn_binder.ogk_max_dist = math.max(0, math.min(15, tonumber(SpecBinderUi.ogk_max_dist[0]) or 15))
 	gwarn_binder.ogk_log_corner = math.max(0, math.min(OGK_LOG_CORNER_FREE, tonumber(SpecBinderUi.ogk_log_corner[0]) or 1))
-	gwarn_binder.ogk_log_title = charbuf_to_utf8(SpecBinderUi.buf_ogk_log_title, 128)
-	if gwarn_binder.ogk_log_title == "" then
-		gwarn_binder.ogk_log_title = "Список ОГК"
-	end
+	gwarn_binder.ogk_log_title = "Отображение"
+	gwarn_binder.ogk_self_nick = charbuf_to_utf8(SpecBinderUi.buf_ogk_self_nick, 128)
+	gwarn_binder.ogk_self_tag = charbuf_to_utf8(SpecBinderUi.buf_ogk_self_tag, 64)
+	gwarn_binder.ogk_self_tag_place = tonumber(SpecBinderUi.ogk_self_tag_place[0]) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
 	if gwarn_binder.ogk_log_corner ~= OGK_LOG_CORNER_FREE then
 		gwarn_binder.ogk_log_pos_x, gwarn_binder.ogk_log_pos_y = vig_ogk_corner_pos(gwarn_binder.ogk_log_corner)
 	end
@@ -2074,6 +2123,9 @@ save_gwarn_binder_settings = function()
 			ogk_log_corner = tonumber(gwarn_binder.ogk_log_corner) or 1,
 			ogk_log_pos_x = tonumber(gwarn_binder.ogk_log_pos_x),
 			ogk_log_pos_y = tonumber(gwarn_binder.ogk_log_pos_y),
+			ogk_self_nick = gwarn_binder.ogk_self_nick,
+			ogk_self_tag = gwarn_binder.ogk_self_tag,
+			ogk_self_tag_place = tonumber(gwarn_binder.ogk_self_tag_place) or 0,
 		})
 	)
 	f:write("\n")
@@ -2093,13 +2145,16 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
 	gwarn_binder.bind_chat_open = "[]"
 	gwarn_binder.ogk_enabled = false
-	gwarn_binder.ogk_log_title = "Список ОГК"
+	gwarn_binder.ogk_log_title = "Отображение"
 	gwarn_binder.ogk_show_log = true
 	gwarn_binder.ogk_notify = false
 	gwarn_binder.ogk_max_dist = 15
 	gwarn_binder.ogk_log_corner = 1
 	gwarn_binder.ogk_log_pos_x = sizeX * 0.78
 	gwarn_binder.ogk_log_pos_y = sizeY * 0.25
+	gwarn_binder.ogk_self_nick = ""
+	gwarn_binder.ogk_self_tag = ""
+	gwarn_binder.ogk_self_tag_place = 0
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
 		create_user_binder_from_default()
 	end
@@ -2363,12 +2418,32 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 		)
 	)
 	imgui.Spacing()
-	imgui.Checkbox(im_utf8("Включить отображение ОГК##ogk_en"), SpecBinderUi.ogk_enabled)
+	imgui.Checkbox(im_utf8("Включить отображение##ogk_en"), SpecBinderUi.ogk_enabled)
 	imgui.Spacing()
-	imgui.Text(im_utf8("Заголовок лога:"))
-	imgui.InputText("##ogk_log_title", SpecBinderUi.buf_ogk_log_title, 128)
+	imgui.Text(im_utf8("Мой ник (для метки в списке):"))
+	imgui.InputTextWithHint("##ogk_self_nick", im_utf8("Ken_Yager"), SpecBinderUi.buf_ogk_self_nick, 128)
+	imgui.Text(im_utf8("Тег (метка):"))
+	imgui.InputTextWithHint("##ogk_self_tag", im_utf8("[Я]"), SpecBinderUi.buf_ogk_self_tag, 64)
+	imgui.Text(im_utf8("Положение тега:"))
+	local tag_place_labels = {
+		im_utf8("Перед ником"),
+		im_utf8("После ID"),
+	}
+	local tag_idx = (tonumber(SpecBinderUi.ogk_self_tag_place[0]) or 0) + 1
+	if tag_idx < 1 or tag_idx > #tag_place_labels then
+		tag_idx = 1
+	end
+	if imgui.BeginCombo("##ogk_tag_place", tag_place_labels[tag_idx]) then
+		if imgui.Selectable(tag_place_labels[1], SpecBinderUi.ogk_self_tag_place[0] == 0) then
+			SpecBinderUi.ogk_self_tag_place[0] = 0
+		end
+		if imgui.Selectable(tag_place_labels[2], SpecBinderUi.ogk_self_tag_place[0] == OGK_TAG_AFTER_ID) then
+			SpecBinderUi.ogk_self_tag_place[0] = OGK_TAG_AFTER_ID
+		end
+		imgui.EndCombo()
+	end
 	imgui.Spacing()
-	imgui.Checkbox(im_utf8("Показывать лог (список в углу)##ogk_log"), SpecBinderUi.ogk_show_log)
+	imgui.Checkbox(im_utf8("Показывать список в углу##ogk_log"), SpecBinderUi.ogk_show_log)
 	imgui.Checkbox(im_utf8("Оповещение в чат при появлении##ogk_ntf"), SpecBinderUi.ogk_notify)
 	imgui.Spacing()
 	imgui.Text(im_utf8("Радиус (м):"))
@@ -2512,7 +2587,7 @@ local function vig_render_binder_settings_tabs(panel_h)
 			vig_render_ogk_staff_content(panel_h)
 			imgui.EndTabItem()
 		end
-		if imgui.BeginTabItem(im_utf8("Отображение ОГК##binder_tab_ogk_track")) then
+		if imgui.BeginTabItem(im_utf8("Отображение##binder_tab_ogk_track")) then
 			vig_render_ogk_tracker_settings_tab(panel_h)
 			imgui.EndTabItem()
 		end
