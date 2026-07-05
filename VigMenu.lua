@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.14")
+script_version("6.0.15")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.14"
+local SCRIPT_VERSION_TEXT = "6.0.15"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -438,8 +438,8 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Alek Lester" },
 	{ role = "Помощник Аудитора", name = "Yoshi Swager" },
 	{ role = "Помощник Аудитора", name = "Kirill Mamont" },
-	{ role = "Помощник Аудитора", name = "George_Novikovt" },
-	{ role = "Помощник Аудитора", name = "Ken_Yager" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
 
 local ogk_nearby = {}
