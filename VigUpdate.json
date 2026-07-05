@@ -1,6 +1,6 @@
 {
-  "current_version": "6.0.11",
-  "update_info": "Отображение: скруглённая обводка, свой ник и тег в списке",
+  "current_version": "6.0.12",
+  "update_info": "Отображение: список ников с тегами, без обводки",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",

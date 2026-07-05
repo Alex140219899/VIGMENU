@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.11")
+script_version("6.0.12")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.11"
+local SCRIPT_VERSION_TEXT = "6.0.12"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -349,14 +349,13 @@ local SpecBinderUi = {
 	buf_ogk_search = imgui.new.char[256](),
 	buf_log_search = imgui.new.char[256](),
 	buf_ogk_log_title = imgui.new.char[128](),
-	buf_ogk_self_nick = imgui.new.char[128](),
-	buf_ogk_self_tag = imgui.new.char[64](),
+	buf_ogk_add_nick = imgui.new.char[128](),
+	buf_ogk_add_tag = imgui.new.char[64](),
 	ogk_enabled = imgui.new.bool(false),
 	ogk_show_log = imgui.new.bool(true),
 	ogk_notify = imgui.new.bool(false),
 	ogk_max_dist = imgui.new.int(15),
 	ogk_log_corner = imgui.new.int(1),
-	ogk_self_tag_place = imgui.new.int(0),
 	modal_open = imgui.new.bool(false),
 }
 
@@ -379,9 +378,7 @@ local gwarn_binder = {
 	ogk_log_corner = 1,
 	ogk_log_pos_x = nil,
 	ogk_log_pos_y = nil,
-	ogk_self_nick = "",
-	ogk_self_tag = "",
-	ogk_self_tag_place = 0,
+	ogk_tagged_nicks = {},
 }
 
 local SPEC_BINDER_JSON_PATH = ""
@@ -432,23 +429,19 @@ local ogk_staff_lookup = nil
 local ogk_scan_tick = 0
 local ogk_log_move_mode = false
 local ogk_reopen_binder_modal = false
+local ogk_tag_edit_idx = nil
 local save_gwarn_binder_settings
 
 local OGK_LOG_CORNER_FREE = 4
-local OGK_TAG_AFTER_ID = 1
 
 local function vig_ogk_ensure_defaults()
 	if gwarn_binder.ogk_enabled == nil then
 		gwarn_binder.ogk_enabled = false
 	end
 	gwarn_binder.ogk_log_title = "Отображение"
-	if type(gwarn_binder.ogk_self_nick) ~= "string" then
-		gwarn_binder.ogk_self_nick = ""
+	if type(gwarn_binder.ogk_tagged_nicks) ~= "table" then
+		gwarn_binder.ogk_tagged_nicks = {}
 	end
-	if type(gwarn_binder.ogk_self_tag) ~= "string" then
-		gwarn_binder.ogk_self_tag = ""
-	end
-	gwarn_binder.ogk_self_tag_place = tonumber(gwarn_binder.ogk_self_tag_place) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
 	if gwarn_binder.ogk_show_log == nil then
 		gwarn_binder.ogk_show_log = true
 	end
@@ -513,44 +506,112 @@ local function vig_ogk_format_dist_m(dist)
 	return tostring(math.floor(dist + 0.5)) .. " м"
 end
 
-local function vig_ogk_get_self_nick_norm()
-	local s = tostring(gwarn_binder.ogk_self_nick or ""):match("^%s*(.-)%s*$") or ""
-	if s == "" then
+local function vig_ogk_trim(s)
+	return tostring(s or ""):match("^%s*(.-)%s*$") or ""
+end
+
+local function vig_ogk_get_tag_for_nick(nick)
+	local norm = vig_ogk_normalize_compare_name(nick)
+	if norm == "" then
 		return ""
 	end
-	return vig_ogk_normalize_compare_name(s)
+	for _, entry in ipairs(gwarn_binder.ogk_tagged_nicks or {}) do
+		if vig_ogk_normalize_compare_name(entry.nick) == norm then
+			return vig_ogk_trim(entry.tag)
+		end
+	end
+	return ""
+end
+
+local function vig_ogk_clear_add_form()
+	utf8_to_charbuf("", SpecBinderUi.buf_ogk_add_nick, 128)
+	utf8_to_charbuf("", SpecBinderUi.buf_ogk_add_tag, 64)
+	ogk_tag_edit_idx = nil
+end
+
+local function vig_ogk_add_or_update_tagged_nick(nick, tag, edit_idx)
+	nick = vig_ogk_trim(nick)
+	tag = vig_ogk_trim(tag)
+	if nick == "" then
+		return false
+	end
+	if type(gwarn_binder.ogk_tagged_nicks) ~= "table" then
+		gwarn_binder.ogk_tagged_nicks = {}
+	end
+	local norm = vig_ogk_normalize_compare_name(nick)
+	if edit_idx then
+		local entry = gwarn_binder.ogk_tagged_nicks[edit_idx]
+		if not entry then
+			return false
+		end
+		for i, e in ipairs(gwarn_binder.ogk_tagged_nicks) do
+			if i ~= edit_idx and vig_ogk_normalize_compare_name(e.nick) == norm then
+				return false
+			end
+		end
+		entry.nick = nick
+		entry.tag = tag
+	else
+		for _, e in ipairs(gwarn_binder.ogk_tagged_nicks) do
+			if vig_ogk_normalize_compare_name(e.nick) == norm then
+				return false
+			end
+		end
+		gwarn_binder.ogk_tagged_nicks[#gwarn_binder.ogk_tagged_nicks + 1] = {
+			nick = nick,
+			tag = tag,
+		}
+	end
+	save_gwarn_binder_settings()
+	return true
+end
+
+local function vig_ogk_remove_tagged_nick(idx)
+	if type(gwarn_binder.ogk_tagged_nicks) ~= "table" then
+		return
+	end
+	if idx < 1 or idx > #gwarn_binder.ogk_tagged_nicks then
+		return
+	end
+	table.remove(gwarn_binder.ogk_tagged_nicks, idx)
+	if ogk_tag_edit_idx == idx then
+		ogk_tag_edit_idx = nil
+	elseif ogk_tag_edit_idx and ogk_tag_edit_idx > idx then
+		ogk_tag_edit_idx = ogk_tag_edit_idx - 1
+	end
+	save_gwarn_binder_settings()
+end
+
+local function vig_ogk_start_edit_tagged_nick(idx)
+	local entry = gwarn_binder.ogk_tagged_nicks and gwarn_binder.ogk_tagged_nicks[idx]
+	if not entry then
+		return
+	end
+	ogk_tag_edit_idx = idx
+	utf8_to_charbuf(entry.nick or "", SpecBinderUi.buf_ogk_add_nick, 128)
+	utf8_to_charbuf(entry.tag or "", SpecBinderUi.buf_ogk_add_tag, 64)
+end
+
+local function vig_ogk_try_submit_tagged_nick()
+	local nick = charbuf_to_utf8(SpecBinderUi.buf_ogk_add_nick, 128)
+	local tag = charbuf_to_utf8(SpecBinderUi.buf_ogk_add_tag, 64)
+	if vig_ogk_add_or_update_tagged_nick(nick, tag, ogk_tag_edit_idx) then
+		vig_ogk_clear_add_form()
+		return true
+	end
+	return false
 end
 
 local function vig_ogk_format_player_line(index, p)
 	local nick = tostring(p.nick or "")
 	local id = tostring(p.id or "")
 	local dist = vig_ogk_format_dist_m(p.dist)
-	local tag = tostring(gwarn_binder.ogk_self_tag or ""):match("^%s*(.-)%s*$") or ""
-	local self_norm = vig_ogk_get_self_nick_norm()
+	local tag = vig_ogk_get_tag_for_nick(nick)
 	local prefix = tostring(index) .. ". "
-	if tag ~= "" and self_norm ~= "" and vig_ogk_normalize_compare_name(nick) == self_norm then
-		if tonumber(gwarn_binder.ogk_self_tag_place) == OGK_TAG_AFTER_ID then
-			return prefix .. nick .. " [" .. id .. "] " .. tag .. " — " .. dist
-		end
+	if tag ~= "" then
 		return prefix .. tag .. " " .. nick .. " [" .. id .. "] — " .. dist
 	end
 	return prefix .. nick .. " [" .. id .. "] — " .. dist
-end
-
-local function vig_ogk_draw_log_border(posX, posY, posW, posH)
-	local fg = imgui.GetForegroundDrawList and imgui.GetForegroundDrawList()
-	if not fg or not fg.AddRect then
-		return
-	end
-	local border = imgui.ColorConvertFloat4ToU32(imgui.ImVec4(0.45, 0.75, 1.0, 0.82))
-	fg:AddRect(
-		imgui.ImVec2(posX, posY),
-		imgui.ImVec2(posX + posW, posY + posH),
-		border,
-		6 * custom_dpi,
-		0,
-		1.5 * custom_dpi
-	)
 end
 
 local function vig_ogk_fix_log_position()
@@ -725,7 +786,6 @@ local function vig_ogk_draw_log_overlay(player)
 	if st then
 		st.WindowBorderSize = old_border
 	end
-	vig_ogk_draw_log_border(posX, posY, posW, posH)
 	if ogk_style_pushed > 0 and imgui.PopStyleColor then
 		imgui.PopStyleColor(ogk_style_pushed)
 	end
@@ -1840,14 +1900,26 @@ local function apply_binder_table(data)
 	if data.ogk_log_pos_y ~= nil then
 		gwarn_binder.ogk_log_pos_y = tonumber(data.ogk_log_pos_y)
 	end
-	if type(data.ogk_self_nick) == "string" then
-		gwarn_binder.ogk_self_nick = data.ogk_self_nick
-	end
-	if type(data.ogk_self_tag) == "string" then
-		gwarn_binder.ogk_self_tag = data.ogk_self_tag
-	end
-	if data.ogk_self_tag_place ~= nil then
-		gwarn_binder.ogk_self_tag_place = tonumber(data.ogk_self_tag_place) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
+	if type(data.ogk_tagged_nicks) == "table" then
+		gwarn_binder.ogk_tagged_nicks = {}
+		for _, item in ipairs(data.ogk_tagged_nicks) do
+			if type(item) == "table" and type(item.nick) == "string" then
+				local nick = vig_ogk_trim(item.nick)
+				if nick ~= "" then
+					gwarn_binder.ogk_tagged_nicks[#gwarn_binder.ogk_tagged_nicks + 1] = {
+						nick = nick,
+						tag = vig_ogk_trim(item.tag),
+					}
+				end
+			end
+		end
+	elseif type(data.ogk_self_nick) == "string" and vig_ogk_trim(data.ogk_self_nick) ~= "" then
+		gwarn_binder.ogk_tagged_nicks = {
+			{
+				nick = vig_ogk_trim(data.ogk_self_nick),
+				tag = type(data.ogk_self_tag) == "string" and vig_ogk_trim(data.ogk_self_tag) or "",
+			},
+		}
 	end
 	vig_ogk_ensure_defaults()
 	return true
@@ -2014,9 +2086,7 @@ local function binder_ui_sync_from_runtime()
 	SpecBinderUi.ogk_notify[0] = gwarn_binder.ogk_notify and true or false
 	SpecBinderUi.ogk_max_dist[0] = tonumber(gwarn_binder.ogk_max_dist) or 15
 	SpecBinderUi.ogk_log_corner[0] = tonumber(gwarn_binder.ogk_log_corner) or 1
-	utf8_to_charbuf(gwarn_binder.ogk_self_nick or "", SpecBinderUi.buf_ogk_self_nick, 128)
-	utf8_to_charbuf(gwarn_binder.ogk_self_tag or "", SpecBinderUi.buf_ogk_self_tag, 64)
-	SpecBinderUi.ogk_self_tag_place[0] = tonumber(gwarn_binder.ogk_self_tag_place) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
+	vig_ogk_clear_add_form()
 end
 
 local function clamp_binder_delay_ms(dm)
@@ -2044,9 +2114,6 @@ local function binder_ui_apply_to_runtime()
 	gwarn_binder.ogk_max_dist = math.max(0, math.min(15, tonumber(SpecBinderUi.ogk_max_dist[0]) or 15))
 	gwarn_binder.ogk_log_corner = math.max(0, math.min(OGK_LOG_CORNER_FREE, tonumber(SpecBinderUi.ogk_log_corner[0]) or 1))
 	gwarn_binder.ogk_log_title = "Отображение"
-	gwarn_binder.ogk_self_nick = charbuf_to_utf8(SpecBinderUi.buf_ogk_self_nick, 128)
-	gwarn_binder.ogk_self_tag = charbuf_to_utf8(SpecBinderUi.buf_ogk_self_tag, 64)
-	gwarn_binder.ogk_self_tag_place = tonumber(SpecBinderUi.ogk_self_tag_place[0]) == OGK_TAG_AFTER_ID and OGK_TAG_AFTER_ID or 0
 	if gwarn_binder.ogk_log_corner ~= OGK_LOG_CORNER_FREE then
 		gwarn_binder.ogk_log_pos_x, gwarn_binder.ogk_log_pos_y = vig_ogk_corner_pos(gwarn_binder.ogk_log_corner)
 	end
@@ -2123,9 +2190,7 @@ save_gwarn_binder_settings = function()
 			ogk_log_corner = tonumber(gwarn_binder.ogk_log_corner) or 1,
 			ogk_log_pos_x = tonumber(gwarn_binder.ogk_log_pos_x),
 			ogk_log_pos_y = tonumber(gwarn_binder.ogk_log_pos_y),
-			ogk_self_nick = gwarn_binder.ogk_self_nick,
-			ogk_self_tag = gwarn_binder.ogk_self_tag,
-			ogk_self_tag_place = tonumber(gwarn_binder.ogk_self_tag_place) or 0,
+			ogk_tagged_nicks = gwarn_binder.ogk_tagged_nicks or {},
 		})
 	)
 	f:write("\n")
@@ -2152,9 +2217,7 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.ogk_log_corner = 1
 	gwarn_binder.ogk_log_pos_x = sizeX * 0.78
 	gwarn_binder.ogk_log_pos_y = sizeY * 0.25
-	gwarn_binder.ogk_self_nick = ""
-	gwarn_binder.ogk_self_tag = ""
-	gwarn_binder.ogk_self_tag_place = 0
+	gwarn_binder.ogk_tagged_nicks = {}
 	if not doesFileExist(SPEC_BINDER_JSON_PATH) then
 		create_user_binder_from_default()
 	end
@@ -2420,27 +2483,59 @@ local function vig_render_ogk_tracker_settings_tab(panel_h)
 	imgui.Spacing()
 	imgui.Checkbox(im_utf8("Включить отображение##ogk_en"), SpecBinderUi.ogk_enabled)
 	imgui.Spacing()
-	imgui.Text(im_utf8("Мой ник (для метки в списке):"))
-	imgui.InputTextWithHint("##ogk_self_nick", im_utf8("Ken_Yager"), SpecBinderUi.buf_ogk_self_nick, 128)
-	imgui.Text(im_utf8("Тег (метка):"))
-	imgui.InputTextWithHint("##ogk_self_tag", im_utf8("[Я]"), SpecBinderUi.buf_ogk_self_tag, 64)
-	imgui.Text(im_utf8("Положение тега:"))
-	local tag_place_labels = {
-		im_utf8("Перед ником"),
-		im_utf8("После ID"),
-	}
-	local tag_idx = (tonumber(SpecBinderUi.ogk_self_tag_place[0]) or 0) + 1
-	if tag_idx < 1 or tag_idx > #tag_place_labels then
-		tag_idx = 1
+	imgui.Text(im_utf8("Ник:"))
+	imgui.InputTextWithHint("##ogk_add_nick", im_utf8("Ken_Yager"), SpecBinderUi.buf_ogk_add_nick, 128)
+	imgui.Text(im_utf8("Тег:"))
+	imgui.InputTextWithHint("##ogk_add_tag", im_utf8("[Я]"), SpecBinderUi.buf_ogk_add_tag, 64)
+	local add_btn_w = 220 * custom_dpi
+	if ogk_tag_edit_idx then
+		if imgui.Button(im_utf8("Сохранить##ogk_tag_save"), imgui.ImVec2(add_btn_w, 28 * custom_dpi)) then
+			vig_ogk_try_submit_tagged_nick()
+		end
+		imgui.SameLine()
+		if imgui.Button(im_utf8("Отмена##ogk_tag_cancel"), imgui.ImVec2(56 * custom_dpi, 28 * custom_dpi)) then
+			vig_ogk_clear_add_form()
+		end
+	else
+		if imgui.Button(im_utf8("Добавить##ogk_tag_add"), imgui.ImVec2(add_btn_w, 28 * custom_dpi)) then
+			vig_ogk_try_submit_tagged_nick()
+		end
+		imgui.SameLine()
+		if imgui.Button(im_utf8("+##ogk_tag_plus"), imgui.ImVec2(56 * custom_dpi, 28 * custom_dpi)) then
+			vig_ogk_try_submit_tagged_nick()
+		end
 	end
-	if imgui.BeginCombo("##ogk_tag_place", tag_place_labels[tag_idx]) then
-		if imgui.Selectable(tag_place_labels[1], SpecBinderUi.ogk_self_tag_place[0] == 0) then
-			SpecBinderUi.ogk_self_tag_place[0] = 0
+	imgui.Spacing()
+	imgui.Text(im_utf8("Добавленные ники (нажмите на тег или ник для изменения):"))
+	local tagged = gwarn_binder.ogk_tagged_nicks or {}
+	if #tagged == 0 then
+		imgui.TextColored(imgui.ImVec4(0.55, 0.55, 0.6, 1.0), im_utf8("—"))
+	else
+		for i, entry in ipairs(tagged) do
+			local tag_text = vig_ogk_trim(entry.tag)
+			if tag_text == "" then
+				tag_text = "—"
+			end
+			local nick_text = vig_ogk_trim(entry.nick)
+			local editing = ogk_tag_edit_idx == i
+			if imgui.Selectable(
+				im_utf8(tag_text .. "##ogk_list_tag_" .. i),
+				editing
+			) then
+				vig_ogk_start_edit_tagged_nick(i)
+			end
+			imgui.SameLine()
+			if imgui.Selectable(
+				im_utf8(nick_text .. "##ogk_list_nick_" .. i),
+				editing
+			) then
+				vig_ogk_start_edit_tagged_nick(i)
+			end
+			imgui.SameLine()
+			if imgui.Button(im_utf8("Удалить##ogk_list_del_" .. i), imgui.ImVec2(72 * custom_dpi, 0)) then
+				vig_ogk_remove_tagged_nick(i)
+			end
 		end
-		if imgui.Selectable(tag_place_labels[2], SpecBinderUi.ogk_self_tag_place[0] == OGK_TAG_AFTER_ID) then
-			SpecBinderUi.ogk_self_tag_place[0] = OGK_TAG_AFTER_ID
-		end
-		imgui.EndCombo()
 	end
 	imgui.Spacing()
 	imgui.Checkbox(im_utf8("Показывать список в углу##ogk_log"), SpecBinderUi.ogk_show_log)
