@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.20")
+script_version("6.0.24")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.20"
+local SCRIPT_VERSION_TEXT = "6.0.24"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -379,6 +379,9 @@ local function charbuf_to_utf8(buf, max_bytes)
 end
 
 local GWARN_BINDER_HOTKEY_NAME = "VigMenuGwarnBinderOpen"
+VigBinderStopHotKey = nil
+vig_binder_rp_active = false
+vig_binder_rp_stop = false
 
 local gwarn_binder = {
 	rp_script_gwarn = "",
@@ -389,6 +392,7 @@ local gwarn_binder = {
 	fire_ban_days = 0,
 	server_cmd_fire = "demoute",
 	bind_chat_open = "[]",
+	bind_stop_rp = "[]",
 	ogk_enabled = false,
 	ogk_log_title = "Отображение",
 	ogk_show_log = true,
@@ -452,6 +456,7 @@ local ogk_tag_edit_idx = nil
 local save_gwarn_binder_settings
 
 local OGK_LOG_CORNER_FREE = 4
+OGK_LOG_PANEL_W = 252
 
 local function vig_ogk_ensure_defaults()
 	if gwarn_binder.ogk_enabled == nil then
@@ -511,7 +516,7 @@ end
 
 local function vig_ogk_corner_pos(corner)
 	local pad = 12 * custom_dpi
-	local w = 280 * custom_dpi
+	local w = OGK_LOG_PANEL_W * custom_dpi
 	corner = tonumber(corner) or 1
 	if corner == 0 then
 		return pad, pad
@@ -764,11 +769,15 @@ local function vig_ogk_draw_log_overlay(player)
 			wflags = wflags + imgui.WindowFlags.NoMove
 		end
 	end
-	imgui.SetNextWindowSize(imgui.ImVec2(280 * custom_dpi, 0), imgui.Cond.Always)
+	local panel_w = OGK_LOG_PANEL_W * custom_dpi
+	imgui.SetNextWindowSize(imgui.ImVec2(panel_w, 0), imgui.Cond.Always)
 	local st = imgui.GetStyle and imgui.GetStyle()
 	local old_border = st and st.WindowBorderSize or 0
+	local old_pad
 	if st then
 		st.WindowBorderSize = 0
+		old_pad = st.WindowPadding
+		st.WindowPadding = imgui.ImVec2(7 * custom_dpi, 5 * custom_dpi)
 	end
 	local ogk_style_pushed = 0
 	if imgui.PushStyleColor then
@@ -808,7 +817,7 @@ local function vig_ogk_draw_log_overlay(player)
 		gwarn_binder.ogk_log_pos_y = posY
 		imgui.Spacing()
 		imgui.Separator()
-		if imgui.Button(im_utf8("Зафиксировать##ogk_log_fix"), imgui.ImVec2(-1, 26 * custom_dpi)) then
+		if imgui.Button(im_utf8("Зафиксировать##ogk_log_fix"), imgui.ImVec2(-1, 22 * custom_dpi)) then
 			gwarn_binder.ogk_log_pos_x = posX
 			gwarn_binder.ogk_log_pos_y = posY
 			vig_ogk_fix_log_position()
@@ -817,6 +826,9 @@ local function vig_ogk_draw_log_overlay(player)
 	imgui.End()
 	if st then
 		st.WindowBorderSize = old_border
+		if old_pad then
+			st.WindowPadding = old_pad
+		end
 	end
 	if ogk_style_pushed > 0 and imgui.PopStyleColor then
 		imgui.PopStyleColor(ogk_style_pushed)
@@ -1908,6 +1920,9 @@ local function apply_binder_table(data)
 	if type(data.bind_chat_open) == "string" then
 		gwarn_binder.bind_chat_open = data.bind_chat_open
 	end
+	if type(data.bind_stop_rp) == "string" then
+		gwarn_binder.bind_stop_rp = data.bind_stop_rp
+	end
 	if data.ogk_enabled ~= nil then
 		gwarn_binder.ogk_enabled = data.ogk_enabled and true or false
 	end
@@ -2026,6 +2041,7 @@ local function create_user_binder_from_default()
 		gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
 		gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
 		gwarn_binder.bind_chat_open = "[]"
+		gwarn_binder.bind_stop_rp = "[]"
 		return save_gwarn_binder_settings()
 	end
 	local src = get_binder_default_json_path()
@@ -2150,7 +2166,13 @@ local function build_discipline_chat_line(player_id, article_reason, action_type
 	return "/" .. cmd .. " " .. tostring(id) .. " " .. reason
 end
 
-local function try_register_gwarn_binder_hotkey()
+function vig_binder_request_rp_stop()
+	if vig_binder_rp_active then
+		vig_binder_rp_stop = true
+	end
+end
+
+function try_register_binder_hotkeys()
 	pcall(function()
 		local ok_hk, hotkey = pcall(require, "mimgui_hotkeys")
 		if not ok_hk or not hotkey or not hotkey.RemoveHotKey or not hotkey.RegisterHotKey then
@@ -2158,21 +2180,35 @@ local function try_register_gwarn_binder_hotkey()
 		end
 		hotkey.RemoveHotKey(GWARN_BINDER_HOTKEY_NAME)
 		local raw = gwarn_binder.bind_chat_open
-		if not raw or raw == "" or raw == "[]" then
-			return
+		if raw and raw ~= "" and raw ~= "[]" then
+			local keys = decodeJson(raw)
+			if type(keys) == "table" then
+				hotkey.RegisterHotKey(GWARN_BINDER_HOTKEY_NAME, false, keys, function()
+					if sampIsCursorActive and sampIsCursorActive() then
+						return
+					end
+					if sampSetChatInputEnabled and sampSetChatInputText then
+						sampSetChatInputEnabled(true)
+						sampSetChatInputText("/" .. GWARN_MENU_CMD .. " ")
+					end
+				end)
+			end
 		end
-		local keys = decodeJson(raw)
-		if type(keys) ~= "table" then
-			return
+		hotkey.RemoveHotKey("VigMenuBinderStop")
+		VigBinderStopHotKey = nil
+		local stop_keys = {}
+		local raw_stop = gwarn_binder.bind_stop_rp
+		if raw_stop and raw_stop ~= "" and raw_stop ~= "[]" then
+			local decoded = decodeJson(raw_stop)
+			if type(decoded) == "table" then
+				stop_keys = decoded
+			end
 		end
-		hotkey.RegisterHotKey(GWARN_BINDER_HOTKEY_NAME, false, keys, function()
+		VigBinderStopHotKey = hotkey.RegisterHotKey("VigMenuBinderStop", false, stop_keys, function()
 			if sampIsCursorActive and sampIsCursorActive() then
 				return
 			end
-			if sampSetChatInputEnabled and sampSetChatInputText then
-				sampSetChatInputEnabled(true)
-				sampSetChatInputText("/" .. GWARN_MENU_CMD .. " ")
-			end
+			vig_binder_request_rp_stop()
 		end)
 	end)
 end
@@ -2194,6 +2230,7 @@ save_gwarn_binder_settings = function()
 			server_cmd_gwarn = gwarn_binder.server_cmd_gwarn,
 			server_cmd_fire = gwarn_binder.server_cmd_fire,
 			bind_chat_open = gwarn_binder.bind_chat_open,
+			bind_stop_rp = gwarn_binder.bind_stop_rp,
 			ogk_enabled = gwarn_binder.ogk_enabled and true or false,
 			ogk_log_title = gwarn_binder.ogk_log_title,
 			ogk_show_log = gwarn_binder.ogk_show_log and true or false,
@@ -2207,7 +2244,7 @@ save_gwarn_binder_settings = function()
 	)
 	f:write("\n")
 	f:close()
-	try_register_gwarn_binder_hotkey()
+	try_register_binder_hotkeys()
 	return true
 end
 
@@ -2221,6 +2258,7 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
 	gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
 	gwarn_binder.bind_chat_open = "[]"
+	gwarn_binder.bind_stop_rp = "[]"
 	gwarn_binder.ogk_enabled = false
 	gwarn_binder.ogk_log_title = "Отображение"
 	gwarn_binder.ogk_show_log = true
@@ -2250,7 +2288,7 @@ local function load_gwarn_binder_settings()
 			print("[gwarnn] не удалось прочитать VigGwarnBinder.json")
 		end
 	end
-	try_register_gwarn_binder_hotkey()
+	try_register_binder_hotkeys()
 	vig_ogk_ensure_defaults()
 end
 
@@ -2457,13 +2495,40 @@ local function vig_render_binder_fire_fields(script_h)
 	)
 end
 
-local function vig_render_binder_rp_tab(panel_h)
+function vig_render_binder_rp_tab(panel_h)
 	local list_h = vig_binder_tab_inner_height(panel_h, 0)
 	imgui.BeginChild("##binder_rp_scroll", imgui.ImVec2(0, list_h), true)
-	local half_h = math.max(100 * custom_dpi, (list_h - 48 * custom_dpi) * 0.45)
+	local half_h = math.max(100 * custom_dpi, (list_h - 120 * custom_dpi) * 0.42)
 	vig_render_binder_gwarn_fields(half_h)
 	imgui.Separator()
 	vig_render_binder_fire_fields(half_h)
+	imgui.Spacing()
+	imgui.Separator()
+	imgui.Spacing()
+	imgui.TextWrapped(im_utf8("Приостановить отыгровку:"))
+	if VigBinderStopHotKey and VigBinderStopHotKey.ShowHotKey then
+		if VigBinderStopHotKey:ShowHotKey(imgui.ImVec2(-1, 28 * custom_dpi)) then
+			local ok, keys = pcall(function()
+				return VigBinderStopHotKey:GetHotKey()
+			end)
+			if ok and keys then
+				local ok_json, encoded = pcall(encodeJson, keys)
+				if ok_json and type(encoded) == "string" then
+					gwarn_binder.bind_stop_rp = encoded
+					save_gwarn_binder_settings()
+				end
+			end
+		end
+		imgui.TextColored(
+			imgui.ImVec4(0.5, 0.55, 0.65, 1.0),
+			im_utf8("Нажмите на кнопку и задайте клавишу. Во время отыгровки нажатие остановит её.")
+		)
+	else
+		imgui.TextColored(
+			imgui.ImVec4(0.55, 0.55, 0.6, 1.0),
+			im_utf8("Недоступно: нужна библиотека mimgui_hotkeys")
+		)
+	end
 	imgui.EndChild()
 end
 
@@ -2812,21 +2877,45 @@ local function send_discipline_command(player_id, article_reason, action_type)
 		finish_discipline()
 		return
 	end
+	vig_binder_rp_active = true
+	vig_binder_rp_stop = false
 	lua_thread.create(function()
+		local stopped = false
 		for i, raw in ipairs(lines) do
+			if vig_binder_rp_stop then
+				stopped = true
+				break
+			end
 			local lt = raw:match("^%s*(.-)%s*$") or ""
 			if lt ~= "" then
 				local w = lt:match("^{wait%((%d+)%)}$")
 				if w then
 					wait(math.min(tonumber(w) or 0, 60000))
+					if vig_binder_rp_stop then
+						stopped = true
+						break
+					end
 				else
 					local out = apply_binder_placeholders(lt, id, reason)
 					if out ~= "" then
 						sampSendChatUtf8(out)
 						wait(dms)
+						if vig_binder_rp_stop then
+							stopped = true
+							break
+						end
 					end
 				end
 			end
+		end
+		vig_binder_rp_active = false
+		vig_binder_rp_stop = false
+		if stopped then
+			sampAddChatMessageUtf8(
+				"{009EFF}[Vigmenu]{ffffff} Отыгровка приостановлена.",
+				message_color
+			)
+			return
 		end
 		finish_discipline()
 	end)
@@ -3111,9 +3200,19 @@ local function vig_wrap_text_for_width(text, max_width_px)
 end
 
 function imgui.GetMiddleButtonX(count)
-	local width = imgui.GetWindowContentRegionWidth()
+	count = tonumber(count) or 1
+	if count < 1 then
+		count = 1
+	end
+	local width = imgui.GetContentRegionAvail().x
+	if width <= 0 and imgui.GetWindowContentRegionWidth then
+		width = imgui.GetWindowContentRegionWidth()
+	end
 	local space = imgui.GetStyle().ItemSpacing.x
-	return count == 1 and width or width / count - ((space * (count - 1)) / count)
+	if count == 1 then
+		return width
+	end
+	return (width - space * (count - 1)) / count
 end
 
 --- Nickname from SAMP is often CP1251; JSON fields are UTF-8 (use im_utf8).
@@ -3267,21 +3366,30 @@ function register_spec_imgui()
 					imgui.EndChild()
 					imgui.Separator()
 					local footer_flags = imgui.WindowFlags and imgui.WindowFlags.NoScrollbar or 0
+					local footer_st = imgui.GetStyle and imgui.GetStyle()
+					local footer_old_pad
+					if footer_st then
+						footer_old_pad = footer_st.WindowPadding
+						footer_st.WindowPadding = imgui.ImVec2(binder_footer_pad, binder_footer_pad)
+					end
 					imgui.BeginChild("##binder_footer", imgui.ImVec2(0, binder_footer_h), false, footer_flags)
-					local footer_btn_w = imgui.GetMiddleButtonX(2)
-					local footer_center_y = math.max(0, (imgui.GetContentRegionAvail().y - binder_footer_btn_h) * 0.5)
-					imgui.SetCursorPosY(imgui.GetCursorPosY() + footer_center_y)
+					local footer_gap = 6 * custom_dpi
+					local footer_avail_w = imgui.GetContentRegionAvail().x
+					local footer_btn_w = math.floor((footer_avail_w - footer_gap) * 0.5)
 					if imgui.Button(im_utf8("Сохранить##binder_save"), imgui.ImVec2(footer_btn_w, binder_footer_btn_h)) then
 						binder_ui_apply_to_runtime()
 						save_gwarn_binder_settings()
 						sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Настройки сохранены.", message_color)
 						imgui.CloseCurrentPopup()
 					end
-					imgui.SameLine()
+					imgui.SameLine(0, footer_gap)
 					if imgui.Button(im_utf8("Отмена##binder_can"), imgui.ImVec2(footer_btn_w, binder_footer_btn_h)) then
 						imgui.CloseCurrentPopup()
 					end
 					imgui.EndChild()
+					if footer_st and footer_old_pad then
+						footer_st.WindowPadding = footer_old_pad
+					end
 					imgui.EndPopup()
 				end
 				imgui.Separator()
@@ -3554,6 +3662,7 @@ function onScriptTerminate()
 		local ok, hotkey = pcall(require, "mimgui_hotkeys")
 		if ok and hotkey and hotkey.RemoveHotKey then
 			hotkey.RemoveHotKey(GWARN_BINDER_HOTKEY_NAME)
+			hotkey.RemoveHotKey("VigMenuBinderStop")
 		end
 	end)
 	pcall(sampUnregisterChatCommand, GWARN_MENU_CMD)
