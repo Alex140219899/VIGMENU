@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.39")
+script_version("6.0.40")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.39"
+local SCRIPT_VERSION_TEXT = "6.0.40"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2709,6 +2709,7 @@ end
 
 function vig_disc_log.build(sections, q)
 	local counts = {}
+	local total = { fire = 0, gwarn = 0 }
 	local zogs_tree = vig_disc_log.new_zogs_tree()
 	local zogs_maps = vig_disc_log.new_zogs_maps()
 	for _, code in ipairs(vig_disc_log.codes) do
@@ -2721,6 +2722,13 @@ function vig_disc_log.build(sections, q)
 				local body = vig_disc_log.line_body(line)
 				local kind = vig_disc_log.line_kind(body)
 				local code = vig_disc_log.code_from_line(body)
+				if kind then
+					if kind == "fire" then
+						total.fire = total.fire + 1
+					else
+						total.gwarn = total.gwarn + 1
+					end
+				end
 				if kind and code and counts[code] then
 					if kind == "fire" then
 						counts[code].fire = counts[code].fire + 1
@@ -2745,7 +2753,7 @@ function vig_disc_log.build(sections, q)
 			end
 		end
 	end
-	return counts, vig_disc_log.finish_zogs_tree(zogs_tree, zogs_maps)
+	return counts, vig_disc_log.finish_zogs_tree(zogs_tree, zogs_maps), total
 end
 
 function vig_disc_log.zogs_detail_rows(tree)
@@ -2783,7 +2791,7 @@ function vig_disc_log.stats_height(zogs_tree)
 	local style = imgui.GetStyle()
 	local pad_y = style.WindowPadding.y * 2
 	local row_h = imgui.GetTextLineHeightWithSpacing()
-	local rows = 1 + #vig_disc_log.codes
+	local rows = 1 + #vig_disc_log.codes + 2
 	if vig_disc_log.zogs_expanded then
 		rows = rows + vig_disc_log.zogs_detail_rows(zogs_tree)
 	end
@@ -2851,7 +2859,7 @@ function vig_disc_log.render_zogs_details(zogs_tree, col_uvol, col_spec)
 	return ca_clicked
 end
 
-function vig_disc_log.render_stats_body(counts, zogs_tree, filtered, col_uvol, col_spec, muted)
+function vig_disc_log.render_stats_body(counts, zogs_tree, total, filtered, col_uvol, col_spec, muted)
 	imgui.TextColored(muted, im_utf8("Статья"))
 	if filtered then
 		imgui.SameLine()
@@ -2887,10 +2895,19 @@ function vig_disc_log.render_stats_body(counts, zogs_tree, filtered, col_uvol, c
 			vig_disc_log.render_row_counts(row, col_uvol, col_spec)
 		end
 	end
+	if imgui.Separator then
+		imgui.Separator()
+	end
+	local total_col = imgui.ImVec4(0.82, 0.84, 0.9, 1.0)
+	imgui.TextColored(total_col, im_utf8("Всего"))
+	if imgui.IsItemHovered() then
+		imgui.SetTooltip(im_utf8("Все увольнения и спец. выговоры в логе"))
+	end
+	vig_disc_log.render_row_counts(total or { fire = 0, gwarn = 0 }, col_uvol, col_spec)
 	return zogs_clicked, ca_clicked
 end
 
-function vig_disc_log.render(counts, zogs_tree, filtered)
+function vig_disc_log.render(counts, zogs_tree, total, filtered)
 	local muted = imgui.ImVec4(0.55, 0.55, 0.6, 1.0)
 	local col_uvol = 82 * custom_dpi
 	local col_spec = col_uvol + 42 * custom_dpi
@@ -2904,6 +2921,7 @@ function vig_disc_log.render(counts, zogs_tree, filtered)
 	local zogs_clicked, ca_clicked = vig_disc_log.render_stats_body(
 		counts,
 		zogs_tree,
+		total,
 		filtered,
 		col_uvol,
 		col_spec,
@@ -3155,8 +3173,8 @@ local function vig_render_discipline_log_content(panel_h)
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
 	local sections = vig_parse_discipline_log_sections()
-	local disc_counts, disc_zogs = vig_disc_log.build(sections, q)
-	vig_disc_log.render(disc_counts, disc_zogs, q ~= "")
+	local disc_counts, disc_zogs, disc_total = vig_disc_log.build(sections, q)
+	vig_disc_log.render(disc_counts, disc_zogs, disc_total, q ~= "")
 	local stats_h = vig_disc_log.stats_height(disc_zogs)
 	imgui.Spacing()
 	local list_h = vig_binder_tab_inner_height(panel_h, 32 * custom_dpi + stats_h)
