@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.25")
+script_version("6.0.39")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.25"
+local SCRIPT_VERSION_TEXT = "6.0.39"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2457,6 +2457,473 @@ local function vig_parse_discipline_log_sections()
 	return sections
 end
 
+local vig_disc_log = {
+	codes = { "ЗоГС", "МЮ", "МО", "ЦА" },
+	short = {
+		["Правительство LS"] = "Прав. LS",
+		["Полиция ЛС"] = "ЛСПД",
+		["Полиция СФ"] = "СФПД",
+		["Полиция ЛВ"] = "ЛВПД",
+		["Армия ЛС"] = "Армия LS",
+		["Армия SF"] = "Армия SF",
+		["Областная полиция"] = "Обл. пол.",
+		["Центр лицензирования"] = "Центр лиц.",
+		["Пожарный департамент"] = "Пожар.",
+		["Тюрьма строгого режима"] = "Тюрьма",
+	},
+	faction_aliases = {
+		["Автошкола"] = "Центр лицензирования",
+	},
+	no_faction_key = "",
+	zogs_expanded = false,
+	zogs_ca_expanded = false,
+	zogs_fire_label = "17 ЗоГС",
+	mju_factions = {
+		["Полиция ЛС"] = true,
+		["Полиция СФ"] = true,
+		["Полиция ЛВ"] = true,
+		["Областная полиция"] = true,
+	},
+	mo_factions = {
+		["Армия ЛС"] = true,
+		["Армия SF"] = true,
+		["Тюрьма строгого режима"] = true,
+	},
+	ca_factions = {
+		"Правительство LS",
+		"Центр лицензирования",
+		"Пожарный департамент",
+	},
+	stats_measured_h = nil,
+	stats_measured_key = nil,
+}
+
+function vig_disc_log.line_body(line)
+	line = tostring(line or "")
+	return line:match("^%[%d%d%.%d%d%.%d%d%d%d %d%d:%d%d:%d%d%]%s*(.+)$") or line
+end
+
+function vig_disc_log.line_reason(body)
+	body = tostring(body or "")
+	local reason = body:match("[Пп]ричина:%s*(.+)") or ""
+	reason = reason:gsub("%(%d+%)$", ""):gsub("^%s+", ""):gsub("%s+$", "")
+	return reason
+end
+
+function vig_disc_log.code_from_line(body)
+	local reason = utf8_rupper(vig_disc_log.line_reason(body))
+	if reason == "" then
+		return nil
+	end
+	if reason:find("У%.ЦА", 1, true) or reason:find(" ЦА", 1, true) or reason:match("ЦА$") then
+		return "ЦА"
+	end
+	if reason:find("У%.МЮ", 1, true) or reason:find(" МЮ", 1, true) or reason:match("МЮ$") then
+		return "МЮ"
+	end
+	if reason:find("У%.МО", 1, true) or reason:find(" МО", 1, true) or reason:match("МО$") then
+		return "МО"
+	end
+	if reason:find("ЗОГС", 1, true) then
+		return "ЗоГС"
+	end
+	return nil
+end
+
+function vig_disc_log.line_kind(body)
+	body = tostring(body or "")
+	if body:find("Уволил", 1, true) or utf8_rupper(body):find("УВОЛИЛ", 1, true) then
+		return "fire"
+	end
+	local u = utf8_rupper(body)
+	if u:find("СПЕЦ", 1, true) and u:find("ВЫГОВОР", 1, true) then
+		return "gwarn"
+	end
+	return nil
+end
+
+function vig_disc_log.line_matches_filter(sec, line, q)
+	if q == "" then
+		return true
+	end
+	if vig_query_matches(sec.date, q) then
+		return true
+	end
+	return vig_query_matches(line, q)
+end
+
+function vig_disc_log.normalize_faction(name)
+	if name == nil or name == vig_disc_log.no_faction_key then
+		return name
+	end
+	return vig_disc_log.faction_aliases[name] or name
+end
+
+function vig_disc_log.line_faction(body)
+	body = tostring(body or "")
+	local faction = body:match("игроку%s+%S+%s+%[([^%]]+)%]")
+	if faction and faction ~= "" then
+		return vig_disc_log.normalize_faction(faction)
+	end
+	faction = body:match("Уволил%s+%S+%s+%[([^%]]+)%]")
+	if faction and faction ~= "" then
+		return vig_disc_log.normalize_faction(faction)
+	end
+	return vig_disc_log.no_faction_key
+end
+
+function vig_disc_log.org_label(name)
+	if name == nil or name == vig_disc_log.no_faction_key then
+		return "без орг."
+	end
+	return vig_disc_log.short[name] or name
+end
+
+function vig_disc_log.org_bucket(name)
+	if name == vig_disc_log.no_faction_key then
+		return "none"
+	end
+	if vig_disc_log.mju_factions[name] then
+		return "mju"
+	end
+	if vig_disc_log.mo_factions[name] then
+		return "mo"
+	end
+	return "ca"
+end
+
+function vig_disc_log.row_total(row)
+	return (row.fire or 0) + (row.gwarn or 0)
+end
+
+function vig_disc_log.ensure_org(map, name)
+	local org = map[name]
+	if not org then
+		org = { name = name, fire = 0, gwarn = 0 }
+		map[name] = org
+	end
+	return org
+end
+
+function vig_disc_log.add_zogs_hit(tree, maps, faction, kind)
+	if faction == vig_disc_log.no_faction_key then
+		if kind == "fire" then
+			tree.none.fire = tree.none.fire + 1
+		else
+			tree.none.gwarn = tree.none.gwarn + 1
+		end
+		return
+	end
+	local bucket = vig_disc_log.org_bucket(faction)
+	local org = vig_disc_log.ensure_org(maps[bucket], faction)
+	if kind == "fire" then
+		org.fire = org.fire + 1
+	else
+		org.gwarn = org.gwarn + 1
+	end
+	if bucket == "mju" or bucket == "mo" then
+		local group = tree[bucket]
+		if kind == "fire" then
+			group.fire = group.fire + 1
+		else
+			group.gwarn = group.gwarn + 1
+		end
+	end
+end
+
+function vig_disc_log.add_ca_display_hit(maps, faction, kind)
+	if faction == vig_disc_log.no_faction_key then
+		return
+	end
+	if vig_disc_log.org_bucket(faction) ~= "ca" then
+		return
+	end
+	local org = vig_disc_log.ensure_org(maps.ca, faction)
+	if kind == "fire" then
+		org.fire = org.fire + 1
+	else
+		org.gwarn = org.gwarn + 1
+	end
+end
+
+function vig_disc_log.sort_orgs(list)
+	table.sort(list, function(a, b)
+		local ta = vig_disc_log.row_total(a)
+		local tb = vig_disc_log.row_total(b)
+		if ta ~= tb then
+			return ta > tb
+		end
+		return vig_disc_log.org_label(a.name) < vig_disc_log.org_label(b.name)
+	end)
+	return list
+end
+
+function vig_disc_log.orgs_from_map(map)
+	local list = {}
+	for _, org in pairs(map or {}) do
+		if vig_disc_log.row_total(org) > 0 then
+			list[#list + 1] = org
+		end
+	end
+	return vig_disc_log.sort_orgs(list)
+end
+
+function vig_disc_log.finish_zogs_tree(tree, maps)
+	local list = {}
+	local seen = {}
+	for _, name in ipairs(vig_disc_log.ca_factions) do
+		local org = maps.ca[name]
+		if not org then
+			org = { name = name, fire = 0, gwarn = 0 }
+		end
+		list[#list + 1] = org
+		seen[name] = true
+	end
+	for name, org in pairs(maps.ca or {}) do
+		if not seen[name] and vig_disc_log.row_total(org) > 0 then
+			list[#list + 1] = org
+		end
+	end
+	tree.ca.factions = list
+	tree.ca.fire = 0
+	tree.ca.gwarn = 0
+	for _, org in ipairs(list) do
+		tree.ca.fire = tree.ca.fire + (org.fire or 0)
+		tree.ca.gwarn = tree.ca.gwarn + (org.gwarn or 0)
+	end
+	return tree
+end
+
+function vig_disc_log.new_zogs_tree()
+	return {
+		mju = { fire = 0, gwarn = 0 },
+		mo = { fire = 0, gwarn = 0 },
+		ca = { fire = 0, gwarn = 0, factions = {} },
+		none = { fire = 0, gwarn = 0 },
+	}
+end
+
+function vig_disc_log.new_zogs_maps()
+	return { mju = {}, mo = {}, ca = {} }
+end
+
+function vig_disc_log.build(sections, q)
+	local counts = {}
+	local zogs_tree = vig_disc_log.new_zogs_tree()
+	local zogs_maps = vig_disc_log.new_zogs_maps()
+	for _, code in ipairs(vig_disc_log.codes) do
+		counts[code] = { fire = 0, gwarn = 0 }
+	end
+	q = tostring(q or ""):match("^%s*(.-)%s*$") or ""
+	for _, sec in ipairs(sections or {}) do
+		for _, line in ipairs(sec.entries or {}) do
+			if vig_disc_log.line_matches_filter(sec, line, q) then
+				local body = vig_disc_log.line_body(line)
+				local kind = vig_disc_log.line_kind(body)
+				local code = vig_disc_log.code_from_line(body)
+				if kind and code and counts[code] then
+					if kind == "fire" then
+						counts[code].fire = counts[code].fire + 1
+					else
+						counts[code].gwarn = counts[code].gwarn + 1
+					end
+					if code == "ЗоГС" then
+						vig_disc_log.add_zogs_hit(
+							zogs_tree,
+							zogs_maps,
+							vig_disc_log.line_faction(body),
+							kind
+						)
+					elseif code == "ЦА" then
+						vig_disc_log.add_ca_display_hit(
+							zogs_maps,
+							vig_disc_log.line_faction(body),
+							kind
+						)
+					end
+				end
+			end
+		end
+	end
+	return counts, vig_disc_log.finish_zogs_tree(zogs_tree, zogs_maps)
+end
+
+function vig_disc_log.zogs_detail_rows(tree)
+	local rows = 0
+	tree = tree or {}
+	if vig_disc_log.row_total(tree.mju) > 0 then
+		rows = rows + 1
+	end
+	if vig_disc_log.row_total(tree.mo) > 0 then
+		rows = rows + 1
+	end
+	if (tree.none and tree.none.fire or 0) > 0 then
+		rows = rows + 1
+	end
+	rows = rows + 1
+	if vig_disc_log.zogs_ca_expanded then
+		rows = rows + #(tree.ca and tree.ca.factions or vig_disc_log.ca_factions)
+	end
+	return rows
+end
+
+function vig_disc_log.stats_layout_key(zogs_tree)
+	if not vig_disc_log.zogs_expanded then
+		return "c"
+	end
+	local ca = vig_disc_log.zogs_ca_expanded and "1" or "0"
+	return "e:" .. tostring(vig_disc_log.zogs_detail_rows(zogs_tree)) .. ":ca" .. ca
+end
+
+function vig_disc_log.stats_height(zogs_tree)
+	local key = vig_disc_log.stats_layout_key(zogs_tree)
+	if vig_disc_log.stats_measured_h and vig_disc_log.stats_measured_key == key then
+		return vig_disc_log.stats_measured_h
+	end
+	local style = imgui.GetStyle()
+	local pad_y = style.WindowPadding.y * 2
+	local row_h = imgui.GetTextLineHeightWithSpacing()
+	local rows = 1 + #vig_disc_log.codes
+	if vig_disc_log.zogs_expanded then
+		rows = rows + vig_disc_log.zogs_detail_rows(zogs_tree)
+	end
+	return pad_y + rows * row_h + 2 * custom_dpi
+end
+
+function vig_disc_log.render_row_counts(row, col_uvol, col_spec)
+	imgui.SameLine(col_uvol)
+	imgui.Text(im_utf8(tostring(row.fire or 0)))
+	imgui.SameLine(col_spec)
+	imgui.Text(im_utf8(tostring(row.gwarn or 0)))
+end
+
+function vig_disc_log.render_zogs_row(label, row, col_uvol, col_spec)
+	if vig_disc_log.row_total(row) <= 0 then
+		return
+	end
+	imgui.Text(im_utf8(label))
+	vig_disc_log.render_row_counts(row, col_uvol, col_spec)
+end
+
+function vig_disc_log.render_sub_label(text, full_name)
+	local sub_col = imgui.ImVec4(0.68, 0.7, 0.76, 1.0)
+	imgui.TextColored(sub_col, im_utf8(text))
+	if full_name and imgui.IsItemHovered() then
+		imgui.SetTooltip(im_utf8(full_name))
+	end
+end
+
+function vig_disc_log.render_zogs_details(zogs_tree, col_uvol, col_spec)
+	local tree = zogs_tree or {}
+	local lvl1 = 12 * custom_dpi
+	local lvl2 = 26 * custom_dpi
+	local ca_clicked = false
+	imgui.Indent(lvl1)
+	vig_disc_log.render_zogs_row("МЮ", tree.mju, col_uvol, col_spec)
+	vig_disc_log.render_zogs_row("МО", tree.mo, col_uvol, col_spec)
+	if (tree.none and tree.none.fire or 0) > 0 then
+		vig_disc_log.render_sub_label(
+			vig_disc_log.zogs_fire_label,
+			"Увольнение по ЗоГС без [фракции] в строке лога"
+		)
+		vig_disc_log.render_row_counts(tree.none, col_uvol, col_spec)
+	end
+	local ca_arrow = vig_disc_log.zogs_ca_expanded and "[-] " or "[+] "
+	if imgui.Selectable(
+		im_utf8(ca_arrow .. "ЦА##disc_zogs_ca"),
+		false,
+		0,
+		imgui.ImVec2(col_uvol - lvl1 - 8 * custom_dpi, 18 * custom_dpi)
+	) then
+		ca_clicked = true
+	end
+	vig_disc_log.render_row_counts(tree.ca or { fire = 0, gwarn = 0 }, col_uvol, col_spec)
+	if vig_disc_log.zogs_ca_expanded then
+		imgui.Indent(lvl2 - lvl1)
+		for _, org in ipairs((tree.ca and tree.ca.factions) or {}) do
+			local label = vig_disc_log.org_label(org.name)
+			vig_disc_log.render_sub_label(label, org.name)
+			vig_disc_log.render_row_counts(org, col_uvol, col_spec)
+		end
+		imgui.Unindent(lvl2 - lvl1)
+	end
+	imgui.Unindent(lvl1)
+	return ca_clicked
+end
+
+function vig_disc_log.render_stats_body(counts, zogs_tree, filtered, col_uvol, col_spec, muted)
+	imgui.TextColored(muted, im_utf8("Статья"))
+	if filtered then
+		imgui.SameLine()
+		imgui.TextColored(muted, im_utf8("(фильтр)"))
+	end
+	imgui.SameLine(col_uvol)
+	imgui.TextColored(muted, im_utf8("Увол"))
+	imgui.SameLine(col_spec)
+	imgui.TextColored(muted, im_utf8("Спец"))
+	local zogs_clicked = false
+	local ca_clicked = false
+	for _, code in ipairs(vig_disc_log.codes) do
+		local row = counts[code] or { fire = 0, gwarn = 0 }
+		if code == "ЗоГС" then
+			local arrow = vig_disc_log.zogs_expanded and "[-] " or "[+] "
+			if imgui.Selectable(
+				im_utf8(arrow .. code .. "##disc_zogs"),
+				false,
+				0,
+				imgui.ImVec2(col_uvol - 8 * custom_dpi, 18 * custom_dpi)
+			) then
+				zogs_clicked = true
+			end
+			vig_disc_log.render_row_counts(row, col_uvol, col_spec)
+			if vig_disc_log.zogs_expanded then
+				local ca_click = vig_disc_log.render_zogs_details(zogs_tree, col_uvol, col_spec)
+				if ca_click then
+					ca_clicked = true
+				end
+			end
+		else
+			imgui.Text(im_utf8(code))
+			vig_disc_log.render_row_counts(row, col_uvol, col_spec)
+		end
+	end
+	return zogs_clicked, ca_clicked
+end
+
+function vig_disc_log.render(counts, zogs_tree, filtered)
+	local muted = imgui.ImVec4(0.55, 0.55, 0.6, 1.0)
+	local col_uvol = 82 * custom_dpi
+	local col_spec = col_uvol + 42 * custom_dpi
+	local stats_flags = imgui.WindowFlags and imgui.WindowFlags.NoScrollbar or 0
+	imgui.BeginChild(
+		"##disc_log_stats",
+		imgui.ImVec2(0, vig_disc_log.stats_height(zogs_tree)),
+		true,
+		stats_flags
+	)
+	local zogs_clicked, ca_clicked = vig_disc_log.render_stats_body(
+		counts,
+		zogs_tree,
+		filtered,
+		col_uvol,
+		col_spec,
+		muted
+	)
+	local style = imgui.GetStyle()
+	vig_disc_log.stats_measured_h = imgui.GetCursorPosY() + style.WindowPadding.y
+	vig_disc_log.stats_measured_key = vig_disc_log.stats_layout_key(zogs_tree)
+	imgui.EndChild()
+	if zogs_clicked then
+		vig_disc_log.zogs_expanded = not vig_disc_log.zogs_expanded
+		if not vig_disc_log.zogs_expanded then
+			vig_disc_log.zogs_ca_expanded = false
+		end
+	end
+	if ca_clicked then
+		vig_disc_log.zogs_ca_expanded = not vig_disc_log.zogs_ca_expanded
+	end
+end
+
 local function vig_render_binder_gwarn_fields(script_h)
 	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Спец. выговор"))
 	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
@@ -2687,10 +3154,14 @@ local function vig_render_discipline_log_content(panel_h)
 		256
 	)
 	local q = normalize_charbuf_input(SpecBinderUi.buf_log_search, 256)
-	local list_h = vig_binder_tab_inner_height(panel_h, 32 * custom_dpi)
+	local sections = vig_parse_discipline_log_sections()
+	local disc_counts, disc_zogs = vig_disc_log.build(sections, q)
+	vig_disc_log.render(disc_counts, disc_zogs, q ~= "")
+	local stats_h = vig_disc_log.stats_height(disc_zogs)
+	imgui.Spacing()
+	local list_h = vig_binder_tab_inner_height(panel_h, 32 * custom_dpi + stats_h)
 	imgui.BeginChild("##discipline_log_scroll", imgui.ImVec2(0, list_h), true)
 	local ok, err = pcall(function()
-		local sections = vig_parse_discipline_log_sections()
 		if #sections == 0 then
 			imgui.TextWrapped(
 				im_utf8("Лог пуст. Записи появятся после выдачи спец. выговора или увольнения.")
