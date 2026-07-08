@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.0.24")
+script_version("6.0.25")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.0.24"
+local SCRIPT_VERSION_TEXT = "6.0.25"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -415,7 +415,7 @@ local OGK_STAFF = {
 	{ role = "Федеральный Аудитор", name = "Ludwig Hohenberg" },
 	{ role = "Федеральный Аудитор", name = "Artiom Bounteiro" },
 	{ role = "Федеральный Аудитор", name = "Dominic Fox" },
-	{ role = "Федеральный Аудитор", name = "Вакантно" },
+	{ role = "Федеральный Аудитор", name = "Danilka Gill" },
 	{ role = "Федеральный Аудитор", name = "Вакантно" },
 	{ role = "Федеральный Аудитор", name = "Kelly Line" },
 	{ role = "Федеральный Аудитор", name = "Kama Pullya" },
@@ -427,13 +427,13 @@ local OGK_STAFF = {
 	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Chappa Crack" },
-	{ role = "Окружной Аудитор", name = "Danilka Gill" },
+	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Maras Crown" },
 	{ role = "Окружной Аудитор", name = "Torino Mavrodi" },
 	{ role = "Помощник Аудитора", name = "Egor Mokrivsky" },
 	{ role = "Помощник Аудитора", name = "Roni Krey" },
 	{ role = "Помощник Аудитора", name = "Luis Love" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Chill Henderson" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
@@ -456,7 +456,7 @@ local ogk_tag_edit_idx = nil
 local save_gwarn_binder_settings
 
 local OGK_LOG_CORNER_FREE = 4
-OGK_LOG_PANEL_W = 252
+OGK_LOG_PANEL_W = 232
 
 local function vig_ogk_ensure_defaults()
 	if gwarn_binder.ogk_enabled == nil then
@@ -777,7 +777,7 @@ local function vig_ogk_draw_log_overlay(player)
 	if st then
 		st.WindowBorderSize = 0
 		old_pad = st.WindowPadding
-		st.WindowPadding = imgui.ImVec2(7 * custom_dpi, 5 * custom_dpi)
+		st.WindowPadding = imgui.ImVec2(6 * custom_dpi, 4 * custom_dpi)
 	end
 	local ogk_style_pushed = 0
 	if imgui.PushStyleColor then
@@ -817,7 +817,7 @@ local function vig_ogk_draw_log_overlay(player)
 		gwarn_binder.ogk_log_pos_y = posY
 		imgui.Spacing()
 		imgui.Separator()
-		if imgui.Button(im_utf8("Зафиксировать##ogk_log_fix"), imgui.ImVec2(-1, 22 * custom_dpi)) then
+		if imgui.Button(im_utf8("Зафиксировать##ogk_log_fix"), imgui.ImVec2(-1, 20 * custom_dpi)) then
 			gwarn_binder.ogk_log_pos_x = posX
 			gwarn_binder.ogk_log_pos_y = posY
 			vig_ogk_fix_log_position()
