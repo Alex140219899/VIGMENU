@@ -1976,6 +1976,28 @@ local function binder_script_nonempty(s)
 	return (tostring(s or ""):match("^%s*(.-)%s*$") or "") ~= ""
 end
 
+local function binder_template_has_scripts(tpl)
+	if type(tpl) ~= "table" then
+		return false
+	end
+	local g = tpl.rp_script_gwarn
+	if type(g) ~= "string" or not g:match("%S") then
+		g = tpl.rp_script
+	end
+	local f = tpl.rp_script_fire
+	if type(g) == "string" and g:match("%S") then
+		return true
+	end
+	if type(f) == "string" and f:match("%S") then
+		return true
+	end
+	return false
+end
+
+local function binder_default_template_valid(path)
+	return binder_template_has_scripts(read_binder_json_file(path))
+end
+
 local function read_binder_json_file(path)
 	if not path or path == "" or not doesFileExist(path) then
 		return nil
@@ -1996,11 +2018,15 @@ end
 --- Шаблон отыгровки в moonloader/VigMenu/VigGwarnBinderDefault.json (из папки скрипта или с GitHub).
 local function ensure_binder_default_template()
 	local dest = get_binder_default_json_path()
-	if doesFileExist(dest) then
+	if binder_default_template_valid(dest) then
 		return true
 	end
+	if doesFileExist(dest) then
+		print("[gwarnn] повреждён VigGwarnBinderDefault.json — восстановление шаблона...")
+		pcall(os.remove, dest)
+	end
 	for _, p in ipairs(binder_default_template_candidates()) do
-		if doesFileExist(p) and spec_copy_file(p, dest) then
+		if binder_default_template_valid(p) and spec_copy_file(p, dest) then
 			print("[gwarnn] скопирован шаблон → " .. dest)
 			return true
 		end
@@ -2017,7 +2043,7 @@ local function ensure_binder_default_template()
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
 		end
-		if download_url_to_file_sync(tmp, u, 60) and doesFileExist(tmp) then
+		if download_url_to_file_sync(tmp, u, 60) and doesFileExist(tmp) and binder_default_template_valid(tmp) then
 			if spec_copy_file(tmp, dest) then
 				print("[gwarnn] скачан шаблон отыгровки → " .. dest)
 				pcall(os.remove, tmp)
@@ -2027,6 +2053,23 @@ local function ensure_binder_default_template()
 	end
 	pcall(os.remove, tmp)
 	return false
+end
+
+local function read_binder_template_table()
+	if not ensure_binder_default_template() then
+		return nil
+	end
+	local tpl = read_binder_json_file(get_binder_default_json_path())
+	if binder_template_has_scripts(tpl) then
+		return tpl
+	end
+	for _, p in ipairs(binder_default_template_candidates()) do
+		tpl = read_binder_json_file(p)
+		if binder_template_has_scripts(tpl) then
+			return tpl
+		end
+	end
+	return nil
 end
 
 --- Первый запуск: VigGwarnBinder.json из шаблона (редактируется в настройках и сохраняется отдельно).
@@ -2059,11 +2102,9 @@ local function ensure_binder_scripts_from_template()
 	if not need_g and not need_f then
 		return false
 	end
-	if not ensure_binder_default_template() then
-		return false
-	end
-	local tpl = read_binder_json_file(get_binder_default_json_path())
+	local tpl = read_binder_template_table()
 	if not tpl then
+		print("[gwarnn] не удалось загрузить шаблон отыгровок (VigGwarnBinderDefault.json)")
 		return false
 	end
 	if need_g then
