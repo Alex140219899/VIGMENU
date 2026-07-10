@@ -1,6 +1,6 @@
 {
-  "current_version": "6.1.0",
-  "update_info": "Добавлена статистика в лог",
+  "current_version": "6.1.1",
+  "update_info": "Обновлён список ОГК, исправлена загрузка отыгровок и спам RegisterCommand",
   "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
   "articles_version": "17",
   "articles_info": "ЗоГС, МЮ, МО, ЦА — полный список для увольнения/спец. выговора",

@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.0")
+script_version("6.1.1")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.0"
+local SCRIPT_VERSION_TEXT = "6.1.1"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -427,13 +427,13 @@ local OGK_STAFF = {
 	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Вакантно" },
 	{ role = "Окружной Аудитор", name = "Chappa Crack" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
+	{ role = "Окружной Аудитор", name = "Chill Henderson" },
 	{ role = "Окружной Аудитор", name = "Maras Crown" },
 	{ role = "Окружной Аудитор", name = "Torino Mavrodi" },
 	{ role = "Помощник Аудитора", name = "Egor Mokrivsky" },
 	{ role = "Помощник Аудитора", name = "Roni Krey" },
 	{ role = "Помощник Аудитора", name = "Luis Love" },
-	{ role = "Помощник Аудитора", name = "Chill Henderson" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
@@ -444,6 +444,16 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Kirill Mamont" },
 	{ role = "Помощник Аудитора", name = "Risotto Secco" },
 	{ role = "Помощник Аудитора", name = "Timothy Zanic" },
+	{ role = "Помощник Аудитора", name = "August Cashin" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Вакантно" },
 }
 
 local ogk_nearby = {}
@@ -4082,6 +4092,9 @@ function register_spec_imgui()
 end
 
 function initialize_commands()
+	pcall(sampUnregisterChatCommand, GWARN_MENU_CMD)
+	pcall(sampUnregisterChatCommand, GWARN_MENU_CMD_ALT)
+	pcall(sampUnregisterChatCommand, GWARN_RELOAD_CMD)
 	sampRegisterChatCommand(GWARN_MENU_CMD, function(arg)
 		process_gwarn_menu_command_arg(arg or "")
 	end)
@@ -4107,14 +4120,13 @@ function initialize_commands()
 	end
 end
 
-local function start_reregister_and_hooks_loop()
+local function start_sampev_hooks_loop()
 	if not lua_thread or not lua_thread.create then
 		return
 	end
 	lua_thread.create(function()
 		while true do
 			wait(4000)
-			initialize_commands()
 			pcall(ensure_sampev_hooks)
 		end
 	end)
@@ -4169,7 +4181,7 @@ function main()
 			pcall(ensure_sampev_hooks)
 		end)
 	end
-	start_reregister_and_hooks_loop()
+	start_sampev_hooks_loop()
 	start_update_worker_loop()
 
 	local imgui_ok, imgui_err = pcall(register_spec_imgui)
