@@ -11,14 +11,14 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.9")
+script_version("6.1.10")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
 local u8 = require("encoding").UTF8
 
 --- ImGui + mimgui expect UTF-8. VigArticles.json is UTF-8 � do NOT wrap in u8() (that path is for CP1251).
-local function im_utf8(s)
+function im_utf8(s)
 	if s == nil then
 		return ""
 	end
@@ -26,7 +26,7 @@ local function im_utf8(s)
 end
 
 --- UTF-8 (ImGui, JSON, строка отыгровки) → кодировка чата (CP1251 при encoding.default).
-local function chat_from_utf8(s)
+function chat_from_utf8(s)
 	s = tostring(s or "")
 	if s == "" then
 		return s
@@ -40,16 +40,16 @@ local function chat_from_utf8(s)
 	return s
 end
 
-local function sampSendChatUtf8(text)
+function sampSendChatUtf8(text)
 	sampSendChat(chat_from_utf8(text))
 end
 
-local function sampAddChatMessageUtf8(text, color)
+function sampAddChatMessageUtf8(text, color)
 	sampAddChatMessage(chat_from_utf8(text), color)
 end
 
 -- Case-insensitive search for UTF-8 JSON (VigArticles) + ASCII; no CP1251 literals in file
-local function utf8_rupper(s)
+function utf8_rupper(s)
 	if not s or s == "" then
 		return ""
 	end
@@ -93,14 +93,14 @@ local function utf8_rupper(s)
 end
 
 --- SmartUK JSON uses "item"; some files use "items"
-local function chapter_items(ch)
+function chapter_items(ch)
 	if not ch or type(ch) ~= "table" then
 		return nil
 	end
 	return ch.item or ch.items or ch.Item or ch.Items
 end
 
-local function article_matches_query(item, query)
+function article_matches_query(item, query)
 	if not item or type(item) ~= "table" then
 		return false
 	end
@@ -120,7 +120,7 @@ local function article_matches_query(item, query)
 	return ok and hit
 end
 
-local function chapter_matches_query(chapter, query)
+function chapter_matches_query(chapter, query)
 	if query == "" then
 		return true
 	end
@@ -135,7 +135,7 @@ local function chapter_matches_query(chapter, query)
 	return ok and hit
 end
 
-local function article_row_visible(item, chapter, query)
+function article_row_visible(item, chapter, query)
 	if query == "" then
 		return true
 	end
@@ -146,7 +146,7 @@ local function article_row_visible(item, chapter, query)
 end
 
 --- Fix alternate JSON keys once after load
-local function normalize_articles_root(data)
+function normalize_articles_root(data)
 	if type(data) ~= "table" then
 		return
 	end
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.9"
+local SCRIPT_VERSION_TEXT = "6.1.10"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -182,14 +182,14 @@ local BINDER_DEFAULT_JSON_URL = "https://raw.githubusercontent.com/Alex140219899
 --- Постоянная папка данных внутри moonloader (не перезаписывается при обновлении .lua).
 local VIG_DATA_DIR_NAME = "VigMenu"
 
-local function get_spec_data_dir()
+function get_spec_data_dir()
 	return (worked_dir .. "/" .. VIG_DATA_DIR_NAME):gsub("\\", "/")
 end
 
 --- Один раз за сессию: без повторного os.execute (на Windows мигало консолью/cmd).
 local vig_spec_data_dir_ready = false
 
-local function ensure_spec_data_dir()
+function ensure_spec_data_dir()
 	if vig_spec_data_dir_ready then
 		return
 	end
@@ -207,7 +207,7 @@ local function ensure_spec_data_dir()
 	end
 end
 
-local function spec_copy_file(src, dst)
+function spec_copy_file(src, dst)
 	local r = io.open(src, "rb")
 	if not r then
 		return false
@@ -224,7 +224,7 @@ local function spec_copy_file(src, dst)
 end
 
 --- Один раз при загрузке: перенос только VigGwarnBinder.json из старых путей (статьи — только с GitHub).
-local function migrate_legacy_spec_files()
+function migrate_legacy_spec_files()
 	ensure_spec_data_dir()
 	local data_dir = get_spec_data_dir()
 	local data_binder = data_dir .. "/VigGwarnBinder.json"
@@ -256,7 +256,7 @@ end
 migrate_legacy_spec_files()
 
 --- VigArticles.json: всегда moonloader/VigMenu/ (после migrate).
-local function get_spec_json_path()
+function get_spec_json_path()
 	ensure_spec_data_dir()
 	return (get_spec_data_dir() .. "/VigArticles.json"):gsub("\\", "/")
 end
@@ -281,7 +281,7 @@ local commands_registered_log = false
 local spec_theme_lazy_done = false
 
 --- Colors only (SwitchContext must run inside an ImGui frame � see OnFrame)
-local function apply_spec_dark_theme_core()
+function apply_spec_dark_theme_core()
 	local a = 0.98
 	local s = imgui.GetStyle()
 	s.WindowPadding = imgui.ImVec2(8 * custom_dpi, 8 * custom_dpi)
@@ -320,7 +320,7 @@ local function apply_spec_dark_theme_core()
 	s.Colors[imgui.Col.ModalWindowDimBg] = imgui.ImVec4(0.0, 0.0, 0.0, 0.65)
 end
 
-local function apply_spec_dark_theme()
+function apply_spec_dark_theme()
 	pcall(function()
 		imgui.SwitchContext()
 	end)
@@ -363,7 +363,7 @@ local SpecBinderUi = {
 	modal_open = imgui.new.bool(false),
 }
 
-local function utf8_to_charbuf(str, buf, max_bytes)
+function utf8_to_charbuf(str, buf, max_bytes)
 	str = tostring(str or "")
 	ffi.fill(buf, max_bytes, 0)
 	local n = math.min(#str, max_bytes - 1)
@@ -373,7 +373,7 @@ local function utf8_to_charbuf(str, buf, max_bytes)
 end
 
 --- ImGui пишет NUL в конец строки, но не затирает байты после него.
-local function charbuf_to_utf8(buf, max_bytes)
+function charbuf_to_utf8(buf, max_bytes)
 	local raw = ffi.string(buf, max_bytes)
 	local z = raw:find("\0", 1, true)
 	if z then
@@ -475,7 +475,7 @@ local save_gwarn_binder_settings
 local OGK_LOG_CORNER_FREE = 4
 OGK_LOG_PANEL_W = 232
 
-local function vig_ogk_ensure_defaults()
+function vig_ogk_ensure_defaults()
 	if gwarn_binder.ogk_enabled == nil then
 		gwarn_binder.ogk_enabled = false
 	end
@@ -497,7 +497,7 @@ local function vig_ogk_ensure_defaults()
 	end
 end
 
-local function vig_ogk_normalize_compare_name(name)
+function vig_ogk_normalize_compare_name(name)
 	name = tostring(name or "")
 	local tagged = name:match("^%[.-%]%s*(.+)$")
 	if tagged then
@@ -507,7 +507,7 @@ local function vig_ogk_normalize_compare_name(name)
 	return utf8_rupper(name)
 end
 
-local function vig_ogk_get_staff_lookup()
+function vig_ogk_get_staff_lookup()
 	if ogk_staff_lookup then
 		return ogk_staff_lookup
 	end
@@ -520,7 +520,7 @@ local function vig_ogk_get_staff_lookup()
 	return ogk_staff_lookup
 end
 
-local function vig_ogk_get_tagged_norm_set()
+function vig_ogk_get_tagged_norm_set()
 	local set = {}
 	for _, entry in ipairs(gwarn_binder.ogk_tagged_nicks or {}) do
 		local norm = vig_ogk_normalize_compare_name(entry.nick)
@@ -531,7 +531,7 @@ local function vig_ogk_get_tagged_norm_set()
 	return set
 end
 
-local function vig_ogk_corner_pos(corner)
+function vig_ogk_corner_pos(corner)
 	local pad = 12 * custom_dpi
 	local w = OGK_LOG_PANEL_W * custom_dpi
 	corner = tonumber(corner) or 1
@@ -550,7 +550,7 @@ local function vig_ogk_corner_pos(corner)
 	return tonumber(gwarn_binder.ogk_log_pos_x) or (sizeX * 0.78), tonumber(gwarn_binder.ogk_log_pos_y) or (sizeY * 0.25)
 end
 
-local function vig_ogk_format_dist_m(dist)
+function vig_ogk_format_dist_m(dist)
 	dist = tonumber(dist) or 0
 	if dist < 1 then
 		return string.format("%.1f м", dist)
@@ -558,11 +558,11 @@ local function vig_ogk_format_dist_m(dist)
 	return tostring(math.floor(dist + 0.5)) .. " м"
 end
 
-local function vig_ogk_trim(s)
+function vig_ogk_trim(s)
 	return tostring(s or ""):match("^%s*(.-)%s*$") or ""
 end
 
-local function vig_ogk_get_tag_for_nick(nick)
+function vig_ogk_get_tag_for_nick(nick)
 	local norm = vig_ogk_normalize_compare_name(nick)
 	if norm == "" then
 		return ""
@@ -575,13 +575,13 @@ local function vig_ogk_get_tag_for_nick(nick)
 	return ""
 end
 
-local function vig_ogk_clear_add_form()
+function vig_ogk_clear_add_form()
 	utf8_to_charbuf("", SpecBinderUi.buf_ogk_add_nick, 128)
 	utf8_to_charbuf("", SpecBinderUi.buf_ogk_add_tag, 64)
 	ogk_tag_edit_idx = nil
 end
 
-local function vig_ogk_add_or_update_tagged_nick(nick, tag, edit_idx)
+function vig_ogk_add_or_update_tagged_nick(nick, tag, edit_idx)
 	nick = vig_ogk_trim(nick)
 	tag = vig_ogk_trim(tag)
 	if nick == "" then
@@ -618,7 +618,7 @@ local function vig_ogk_add_or_update_tagged_nick(nick, tag, edit_idx)
 	return true
 end
 
-local function vig_ogk_remove_tagged_nick(idx)
+function vig_ogk_remove_tagged_nick(idx)
 	if type(gwarn_binder.ogk_tagged_nicks) ~= "table" then
 		return
 	end
@@ -634,7 +634,7 @@ local function vig_ogk_remove_tagged_nick(idx)
 	save_gwarn_binder_settings()
 end
 
-local function vig_ogk_start_edit_tagged_nick(idx)
+function vig_ogk_start_edit_tagged_nick(idx)
 	local entry = gwarn_binder.ogk_tagged_nicks and gwarn_binder.ogk_tagged_nicks[idx]
 	if not entry then
 		return
@@ -644,7 +644,7 @@ local function vig_ogk_start_edit_tagged_nick(idx)
 	utf8_to_charbuf(entry.tag or "", SpecBinderUi.buf_ogk_add_tag, 64)
 end
 
-local function vig_ogk_try_submit_tagged_nick()
+function vig_ogk_try_submit_tagged_nick()
 	local nick = charbuf_to_utf8(SpecBinderUi.buf_ogk_add_nick, 128)
 	local tag = charbuf_to_utf8(SpecBinderUi.buf_ogk_add_tag, 64)
 	if vig_ogk_add_or_update_tagged_nick(nick, tag, ogk_tag_edit_idx) then
@@ -654,7 +654,7 @@ local function vig_ogk_try_submit_tagged_nick()
 	return false
 end
 
-local function vig_ogk_format_player_line(index, p)
+function vig_ogk_format_player_line(index, p)
 	local nick = tostring(p.nick or "")
 	local id = tostring(p.id or "")
 	local dist = vig_ogk_format_dist_m(p.dist)
@@ -666,7 +666,7 @@ local function vig_ogk_format_player_line(index, p)
 	return prefix .. nick .. " [" .. id .. "] — " .. dist
 end
 
-local function vig_ogk_fix_log_position()
+function vig_ogk_fix_log_position()
 	local px = tonumber(gwarn_binder.ogk_log_pos_x)
 	local py = tonumber(gwarn_binder.ogk_log_pos_y)
 	if not px or not py then
@@ -684,7 +684,7 @@ local function vig_ogk_fix_log_position()
 	return true
 end
 
-local function vig_ogk_start_log_move_mode()
+function vig_ogk_start_log_move_mode()
 	ogk_log_move_mode = true
 	gwarn_binder.ogk_log_corner = OGK_LOG_CORNER_FREE
 	SpecBinderUi.ogk_log_corner[0] = OGK_LOG_CORNER_FREE
@@ -694,7 +694,7 @@ local function vig_ogk_start_log_move_mode()
 	end
 end
 
-local function vig_ogk_scan_nearby()
+function vig_ogk_scan_nearby()
 	if not gwarn_binder.ogk_enabled then
 		return {}
 	end
@@ -734,7 +734,7 @@ local function vig_ogk_scan_nearby()
 	return found
 end
 
-local function vig_ogk_update_scan()
+function vig_ogk_update_scan()
 	local prev_ids = {}
 	for _, p in ipairs(ogk_nearby) do
 		prev_ids[p.id] = true
@@ -767,7 +767,7 @@ local function vig_ogk_update_scan()
 	end
 end
 
-local function vig_ogk_draw_log_overlay(player)
+function vig_ogk_draw_log_overlay(player)
 	local title = "Отображение"
 	local corner = tonumber(gwarn_binder.ogk_log_corner) or OGK_LOG_CORNER_FREE
 	if ogk_log_move_mode then
@@ -852,7 +852,7 @@ local function vig_ogk_draw_log_overlay(player)
 	end
 end
 
-local function normalize_charbuf_input(buf, max_bytes)
+function normalize_charbuf_input(buf, max_bytes)
 	local raw = ffi.string(buf, max_bytes)
 	local z = raw:find("\0", 1, true)
 	if z then
@@ -861,7 +861,7 @@ local function normalize_charbuf_input(buf, max_bytes)
 	return (raw:gsub("%z", "")):match("^%s*(.-)%s*$") or ""
 end
 
-local function vig_query_matches(text, query)
+function vig_query_matches(text, query)
 	query = tostring(query or ""):match("^%s*(.-)%s*$") or ""
 	if query == "" then
 		return true
@@ -873,18 +873,18 @@ local function vig_query_matches(text, query)
 	return ok and hit
 end
 
-local function vig_imgui_content_w(min_w)
+function vig_imgui_content_w(min_w)
 	min_w = min_w or 120
 	return math.max(min_w, imgui.GetContentRegionAvail().x)
 end
 
-local function vig_binder_tab_inner_height(panel_h, search_row_h)
+function vig_binder_tab_inner_height(panel_h, search_row_h)
 	local tab_bar_h = 30 * custom_dpi
 	search_row_h = search_row_h or 0
 	return math.max(100 * custom_dpi, panel_h - tab_bar_h - search_row_h)
 end
 
-local function vig_push_content_text_wrap()
+function vig_push_content_text_wrap()
 	if not imgui.PushTextWrapPos then
 		return false
 	end
@@ -899,7 +899,7 @@ local function vig_push_content_text_wrap()
 	return ok
 end
 
-local function vig_pop_content_text_wrap(pushed)
+function vig_pop_content_text_wrap(pushed)
 	if pushed == false then
 		return
 	end
@@ -908,7 +908,7 @@ local function vig_pop_content_text_wrap(pushed)
 	end
 end
 
-local function vig_copy_text_to_clipboard(text)
+function vig_copy_text_to_clipboard(text)
 	text = tostring(text or ""):gsub("\r", ""):gsub("\n", " "):gsub("^%s+", ""):gsub("%s+$", "")
 	if text == "" then
 		return false
@@ -924,7 +924,7 @@ local function vig_copy_text_to_clipboard(text)
 	return false
 end
 
-local function vig_render_ogk_staff_content(scroll_h)
+function vig_render_ogk_staff_content(scroll_h)
 	imgui.InputTextWithHint(
 		"##ogk_search",
 		im_utf8("Поиск (должность / ФИО)"),
@@ -961,7 +961,7 @@ local function vig_render_ogk_staff_content(scroll_h)
 end
 
 --- ImGui обнуляет только префикс до NUL; ffi.string(buf,256)+gsub("%z") склеивал хвост — «пустой» поиск оставлял старый мусор и скрывал все статьи до перезапуска.
-local function normalize_search_input()
+function normalize_search_input()
 	local raw = ffi.string(SpecMenu.input, 256)
 	local z = raw:find("\0", 1, true)
 	if z then
@@ -970,7 +970,7 @@ local function normalize_search_input()
 	return (raw:gsub("%z", "")):match("^%s*(.-)%s*$") or ""
 end
 
-local function decode_json_str(s)
+function decode_json_str(s)
 	if dkok then
 		local ok, dec = pcall(dkjson.decode, s)
 		if ok then
@@ -984,7 +984,7 @@ local function decode_json_str(s)
 end
 
 --- Версия из файла на диске (после скачивания/перезагрузки MoonLoader часто оставляет старый thisScript().version).
-local function vig_read_script_version_from_path(path)
+function vig_read_script_version_from_path(path)
 	path = tostring(path or "")
 	if path == "" then
 		return nil
@@ -1003,13 +1003,13 @@ local function vig_read_script_version_from_path(path)
 	return nil
 end
 
-local function vig_version_trim(s)
+function vig_version_trim(s)
 	s = tostring(s or ""):match("^%s*(.-)%s*$") or ""
 	return s
 end
 
 --- Разбор "4.0.10" → {4,0,10}. Сравнение: -1 если a<b, 0 если равны, 1 если a>b.
-local function vig_parse_version_parts(s)
+function vig_parse_version_parts(s)
 	local parts = {}
 	for num in tostring(s or ""):gmatch("(%d+)") do
 		parts[#parts + 1] = tonumber(num) or 0
@@ -1020,7 +1020,7 @@ local function vig_parse_version_parts(s)
 	return parts
 end
 
-local function vig_compare_versions(a, b)
+function vig_compare_versions(a, b)
 	local pa = vig_parse_version_parts(a)
 	local pb = vig_parse_version_parts(b)
 	local n = math.max(#pa, #pb)
@@ -1037,11 +1037,11 @@ local function vig_compare_versions(a, b)
 	return 0
 end
 
-local function vig_version_to_int(s)
+function vig_version_to_int(s)
 	return tonumber(tostring(s or ""):match("^%s*(%d+)")) or 0
 end
 
-local function get_local_script_version()
+function get_local_script_version()
 	local p = thisScript and thisScript().path
 	local from_disk = p and vig_read_script_version_from_path(p)
 	if from_disk then
@@ -1053,11 +1053,11 @@ local function get_local_script_version()
 	return vig_version_trim(SCRIPT_VERSION_TEXT)
 end
 
-local function get_articles_version_file_path()
+function get_articles_version_file_path()
 	return (get_spec_json_path() .. ".articles_ver"):gsub("\\", "/")
 end
 
-local function read_local_articles_version()
+function read_local_articles_version()
 	local p = get_articles_version_file_path()
 	if not doesFileExist(p) then
 		return ""
@@ -1071,7 +1071,7 @@ local function read_local_articles_version()
 	return (t:match("^%s*(.-)%s*$") or "")
 end
 
-local function write_local_articles_version(ver)
+function write_local_articles_version(ver)
 	ver = tostring(ver or ""):match("^%s*(.-)%s*$") or ""
 	local p = get_articles_version_file_path()
 	local f = io.open(p, "w")
@@ -1085,7 +1085,7 @@ end
 
 local last_manifest_cache = nil
 
-local function download_url_to_file_sync(dest, url, timeout_sec, quiet)
+function download_url_to_file_sync(dest, url, timeout_sec, quiet)
 	if type(downloadUrlToFile) ~= "function" then
 		print("[gwarnn] downloadUrlToFile недоступна (старая сборка MoonLoader?)")
 		return false
@@ -1137,7 +1137,7 @@ local function download_url_to_file_sync(dest, url, timeout_sec, quiet)
 	return ok and doesFileExist(dest)
 end
 
-local function vig_urls_dedupe(urls)
+function vig_urls_dedupe(urls)
 	local seen, out = {}, {}
 	for _, u in ipairs(urls) do
 		u = tostring(u or ""):match("^%s*(.-)%s*$") or ""
@@ -1149,7 +1149,7 @@ local function vig_urls_dedupe(urls)
 	return out
 end
 
-local function vig_url_with_cache_bust(base)
+function vig_url_with_cache_bust(base)
 	base = tostring(base or "")
 	if base == "" then
 		return base
@@ -1159,7 +1159,7 @@ local function vig_url_with_cache_bust(base)
 end
 
 --- jsDelivr кэширует @main — для игры сначала CDN, raw GitHub коротким таймаутом.
-local function vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
+function vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
 	local raw = {}
 	if manifest_url and manifest_url ~= "" then
 		if version_tag and version_tag ~= "" then
@@ -1180,11 +1180,11 @@ local function vig_build_download_urls(jsdelivr_static, manifest_url, version_ta
 	return vig_urls_dedupe(raw)
 end
 
-local function vig_url_is_jsdelivr(url)
+function vig_url_is_jsdelivr(url)
 	return type(url) == "string" and url:find("cdn.jsdelivr.net", 1, true) ~= nil
 end
 
-local function vig_urls_cdn_first(jsdelivr_static, manifest_url, version_tag)
+function vig_urls_cdn_first(jsdelivr_static, manifest_url, version_tag)
 	local all = vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
 	local cdn, rest = {}, {}
 	for _, u in ipairs(all) do
@@ -1204,7 +1204,7 @@ local function vig_urls_cdn_first(jsdelivr_static, manifest_url, version_tag)
 	return out
 end
 
-local function vig_download_timeout_for_url(url, opts)
+function vig_download_timeout_for_url(url, opts)
 	opts = type(opts) == "table" and opts or {}
 	if vig_url_is_jsdelivr(url) then
 		return opts.cdn_timeout or 22
@@ -1213,7 +1213,7 @@ local function vig_download_timeout_for_url(url, opts)
 end
 
 --- Скачивает VigMenu.lua со всех URL и берёт файл с максимальной версией (jsDelivr часто отдаёт старый кэш).
-local function vig_download_best_script(script_urls, tmp, local_v, manifest_v)
+function vig_download_best_script(script_urls, tmp, local_v, manifest_v)
 	local best_body, best_ver, best_url = nil, nil, nil
 	for _, su in ipairs(script_urls) do
 		if doesFileExist(tmp) then
@@ -1250,7 +1250,7 @@ local function vig_download_best_script(script_urls, tmp, local_v, manifest_v)
 end
 
 --- Версия из VigMenu.lua на GitHub (обход устаревшего VigUpdate.json на jsDelivr).
-local function vig_probe_remote_script_max_version(update_url)
+function vig_probe_remote_script_max_version(update_url)
 	update_url = tostring(update_url or "")
 	if update_url == "" then
 		return nil
@@ -1290,7 +1290,7 @@ local function vig_probe_remote_script_max_version(update_url)
 end
 
 --- Если VigUpdate.json от CDN старый, подставляем версию из скачанного VigMenu.lua.
-local function vig_manifest_with_fresh_script_version(m)
+function vig_manifest_with_fresh_script_version(m)
 	if type(m) ~= "table" then
 		return m
 	end
@@ -1334,7 +1334,7 @@ local function vig_manifest_with_fresh_script_version(m)
 end
 
 --- jsDelivr кэширует @main — CDN первым; raw GitHub короткий таймаут (из игры часто недоступен).
-local function fetch_update_manifest(opts)
+function fetch_update_manifest(opts)
 	opts = type(opts) == "table" and opts or {}
 	local quiet = opts.quiet and true or false
 	if opts.fast and last_manifest_cache then
@@ -1422,11 +1422,11 @@ local function fetch_update_manifest(opts)
 	return nil, last_err
 end
 
-local function fetch_update_manifest_resolved()
+function fetch_update_manifest_resolved()
 	return fetch_update_manifest()
 end
 
-local function manifest_script_needs_update(m)
+function manifest_script_needs_update(m)
 	if not m or m.current_version == nil then
 		return false
 	end
@@ -1438,7 +1438,7 @@ local function manifest_script_needs_update(m)
 	return vig_compare_versions(rem, local_v) > 0
 end
 
-local function manifest_articles_needs_update(m)
+function manifest_articles_needs_update(m)
 	if not m or m.articles_version == nil then
 		return false
 	end
@@ -1472,7 +1472,7 @@ local UpdateUi = {
 -- Forward declaration: используется в функции обновления, которая объявлена выше фактической реализации.
 local load_articles
 
-local function apply_updates_from_manifest(m)
+function apply_updates_from_manifest(m)
 	if not m then
 		return
 	end
@@ -1486,7 +1486,7 @@ local function apply_updates_from_manifest(m)
 	UpdateUi.articles_url = type(m.articles_url) == "string" and m.articles_url or ""
 end
 
-local function try_reload_script()
+function try_reload_script()
 	local reloaded = false
 	_G.VIGMENU_GWARNN_LOADED = nil
 	pcall(function()
@@ -1511,7 +1511,7 @@ local function try_reload_script()
 	end
 end
 
-local function vig_do_download_script()
+function vig_do_download_script()
 	local url = UpdateUi.script_url
 	if url == "" then
 		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} В манифесте нет update_url.", message_color)
@@ -1572,7 +1572,7 @@ local function vig_do_download_script()
 	return true
 end
 
-local function start_download_script_thread()
+function start_download_script_thread()
 	if UpdateUi.busy then
 		return
 	end
@@ -1596,7 +1596,7 @@ local function start_download_script_thread()
 end
 
 --- Запуск обновления вне колбэка ImGui (кнопка во вкладках иначе крашит игру).
-local function vig_queue_github_check()
+function vig_queue_github_check()
 	if UpdateUi.busy or UpdateUi.pending_check or UpdateUi.pending_update then
 		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Дождитесь окончания операции.", message_color)
 		return
@@ -1604,7 +1604,7 @@ local function vig_queue_github_check()
 	UpdateUi.pending_check = true
 end
 
-local function vig_queue_github_update(opts)
+function vig_queue_github_update(opts)
 	if UpdateUi.busy or UpdateUi.pending_check or UpdateUi.pending_update then
 		sampAddChatMessageUtf8("{009EFF}[Vigmenu]{ffffff} Подождите, идёт загрузка…", message_color)
 		return
@@ -1613,7 +1613,7 @@ local function vig_queue_github_update(opts)
 	UpdateUi.pending_update_opts = opts
 end
 
-local function vig_do_check_updates()
+function vig_do_check_updates()
 	UpdateUi.busy = true
 	local ok_run, err_run = pcall(function()
 		local m, err = fetch_update_manifest()
@@ -1679,7 +1679,7 @@ local function vig_do_check_updates()
 	UpdateUi.busy = false
 end
 
-local function vig_do_github_update(opts)
+function vig_do_github_update(opts)
 	opts = type(opts) == "table" and opts or {}
 	UpdateUi.busy = true
 	local ok_run, err_run = pcall(function()
@@ -1800,7 +1800,7 @@ local function vig_do_github_update(opts)
 	UpdateUi.busy = false
 end
 
-local function vig_process_pending_update_actions()
+function vig_process_pending_update_actions()
 	if UpdateUi.busy then
 		return
 	end
@@ -1817,7 +1817,7 @@ local function vig_process_pending_update_actions()
 	end
 end
 
-local function start_update_worker_loop()
+function start_update_worker_loop()
 	if UpdateUi.worker_started or not lua_thread or not lua_thread.create then
 		return
 	end
@@ -1832,17 +1832,17 @@ local function start_update_worker_loop()
 end
 
 --- Одна кнопка «Обновить» в настройках (только очередь — работу делает start_update_worker_loop).
-local function vig_run_github_update_from_settings(opts)
+function vig_run_github_update_from_settings(opts)
 	vig_queue_github_update(opts)
 end
 
 --- Только проверка VigUpdate.json — в чат (только очередь).
-local function vig_check_updates_chat_only()
+function vig_check_updates_chat_only()
 	vig_queue_github_check()
 end
 
 --- После приветствия — только сообщение в чат, если есть обновление (скачивание по кнопке в настройках).
-local function vig_delayed_update_hint_after_welcome()
+function vig_delayed_update_hint_after_welcome()
 	if not lua_thread or not lua_thread.create then
 		return
 	end
@@ -1885,17 +1885,17 @@ local function vig_delayed_update_hint_after_welcome()
 	end)
 end
 
-local function get_spec_binder_json_path()
+function get_spec_binder_json_path()
 	ensure_spec_data_dir()
 	return (get_spec_data_dir() .. "/VigGwarnBinder.json"):gsub("\\", "/")
 end
 
-local function get_binder_default_json_path()
+function get_binder_default_json_path()
 	ensure_spec_data_dir()
 	return (get_spec_data_dir() .. "/VigGwarnBinderDefault.json"):gsub("\\", "/")
 end
 
-local function binder_default_template_candidates()
+function binder_default_template_candidates()
 	local candidates = {}
 	pcall(function()
 		local path = thisScript().path
@@ -1908,7 +1908,7 @@ local function binder_default_template_candidates()
 	return candidates
 end
 
-local function parse_binder_delay_ms(v, default)
+function parse_binder_delay_ms(v, default)
 	default = default or 900
 	if type(v) == "number" then
 		return v
@@ -1919,7 +1919,7 @@ local function parse_binder_delay_ms(v, default)
 	return default
 end
 
-local function clamp_fire_ban_days(v)
+function clamp_fire_ban_days(v)
 	v = math.floor(tonumber(v) or 0)
 	if v < 0 then
 		v = 0
@@ -1930,7 +1930,7 @@ local function clamp_fire_ban_days(v)
 	return v
 end
 
-local function normalize_server_cmd(s, default)
+function normalize_server_cmd(s, default)
 	s = tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	s = s:gsub("^/", "")
 	if s == "" then
@@ -1942,7 +1942,7 @@ local function normalize_server_cmd(s, default)
 	return s
 end
 
-local function get_binder_server_cmd(action_type)
+function get_binder_server_cmd(action_type)
 	if action_type == DISCIPLINE_ACTION_FIRE then
 		return normalize_server_cmd(gwarn_binder.server_cmd_fire, DEMOTE_SERVER_CMD)
 	end
@@ -1952,7 +1952,7 @@ local function get_binder_server_cmd(action_type)
 	return normalize_server_cmd(gwarn_binder.server_cmd_gwarn, GWARN_SERVER_CMD)
 end
 
-local function apply_binder_table(data)
+function apply_binder_table(data)
 	if type(data) ~= "table" then
 		return false
 	end
@@ -2045,7 +2045,7 @@ local function apply_binder_table(data)
 	return true
 end
 
-local function binder_script_nonempty(s)
+function binder_script_nonempty(s)
 	return (tostring(s or ""):match("^%s*(.-)%s*$") or "") ~= ""
 end
 
@@ -2067,7 +2067,7 @@ read_binder_json_file = function(path)
 	return nil
 end
 
-local function binder_template_has_scripts(tpl)
+function binder_template_has_scripts(tpl)
 	if type(tpl) ~= "table" then
 		return false
 	end
@@ -2089,12 +2089,12 @@ local function binder_template_has_scripts(tpl)
 	return false
 end
 
-local function binder_default_template_valid(path)
+function binder_default_template_valid(path)
 	return binder_template_has_scripts(read_binder_json_file(path))
 end
 
 --- Шаблон отыгровки в moonloader/VigMenu/VigGwarnBinderDefault.json (из папки скрипта или с GitHub).
-local function ensure_binder_default_template()
+function ensure_binder_default_template()
 	local dest = get_binder_default_json_path()
 	if binder_default_template_valid(dest) then
 		return true
@@ -2137,7 +2137,7 @@ local function ensure_binder_default_template()
 	return false
 end
 
-local function read_binder_template_table()
+function read_binder_template_table()
 	if not ensure_binder_default_template() then
 		return nil
 	end
@@ -2155,7 +2155,7 @@ local function read_binder_template_table()
 end
 
 --- Первый запуск: VigGwarnBinder.json из шаблона (редактируется в настройках и сохраняется отдельно).
-local function create_user_binder_from_default()
+function create_user_binder_from_default()
 	if not ensure_binder_default_template() then
 		print("[gwarnn] нет VigGwarnBinderDefault.json — создаётся пустой VigGwarnBinder.json")
 		gwarn_binder.rp_script_gwarn = ""
@@ -2181,7 +2181,7 @@ local function create_user_binder_from_default()
 	return false
 end
 
-local function ensure_binder_scripts_from_template()
+function ensure_binder_scripts_from_template()
 	local need_g = not binder_script_nonempty(gwarn_binder.rp_script_gwarn)
 	local need_f = not binder_script_nonempty(gwarn_binder.rp_script_fire)
 	local need_d = not binder_script_nonempty(gwarn_binder.rp_script_dismiss)
@@ -2209,7 +2209,7 @@ local function ensure_binder_scripts_from_template()
 	return need_g or need_f or need_d
 end
 
-local function encode_binder_json(t)
+function encode_binder_json(t)
 	if dkok then
 		local ok, s = pcall(function()
 			return dkjson.encode(t, { indent = true })
@@ -2229,7 +2229,7 @@ local function encode_binder_json(t)
 	return "{}"
 end
 
-local function binder_ui_sync_from_runtime()
+function binder_ui_sync_from_runtime()
 	utf8_to_charbuf(gwarn_binder.rp_script_gwarn, SpecBinderUi.buf_script_gwarn, 8192)
 	utf8_to_charbuf(gwarn_binder.rp_script_fire, SpecBinderUi.buf_script_fire, 8192)
 	utf8_to_charbuf(gwarn_binder.rp_script_dismiss, SpecBinderUi.buf_script_dismiss, 8192)
@@ -2250,7 +2250,7 @@ local function binder_ui_sync_from_runtime()
 	vig_ogk_clear_add_form()
 end
 
-local function clamp_binder_delay_ms(dm)
+function clamp_binder_delay_ms(dm)
 	dm = tonumber(dm) or 900
 	if dm < 50 then
 		dm = 50
@@ -2261,7 +2261,7 @@ local function clamp_binder_delay_ms(dm)
 	return dm
 end
 
-local function binder_ui_apply_to_runtime()
+function binder_ui_apply_to_runtime()
 	gwarn_binder.rp_script_gwarn = charbuf_to_utf8(SpecBinderUi.buf_script_gwarn, 8192)
 	gwarn_binder.rp_script_fire = charbuf_to_utf8(SpecBinderUi.buf_script_fire, 8192)
 	gwarn_binder.rp_script_dismiss = charbuf_to_utf8(SpecBinderUi.buf_script_dismiss, 8192)
@@ -2291,7 +2291,7 @@ local function binder_ui_apply_to_runtime()
 	end
 end
 
-local function build_discipline_chat_line(player_id, article_reason, action_type)
+function build_discipline_chat_line(player_id, article_reason, action_type)
 	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local id = tonumber(player_id)
 	local cmd = get_binder_server_cmd(action_type)
@@ -2387,7 +2387,7 @@ save_gwarn_binder_settings = function()
 	return true
 end
 
-local function load_gwarn_binder_settings()
+function load_gwarn_binder_settings()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
 	gwarn_binder.rp_script_gwarn = ""
 	gwarn_binder.delay_ms_gwarn = 900
@@ -2434,7 +2434,7 @@ local function load_gwarn_binder_settings()
 	vig_ogk_ensure_defaults()
 end
 
-local function apply_binder_placeholders(line, player_id, reason)
+function apply_binder_placeholders(line, player_id, reason)
 	local r = tostring(reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local nid = tonumber(player_id)
 	local nick = ""
@@ -2457,7 +2457,7 @@ local function apply_binder_placeholders(line, player_id, reason)
 	return line
 end
 
-local function split_binder_script(script)
+function split_binder_script(script)
 	script = tostring(script or ""):gsub("\r\n", "\n")
 	local lines = {}
 	if script:find("&", 1, true) then
@@ -2480,11 +2480,11 @@ end
 
 local DISCIPLINE_LOG_NAME = "VigDisciplineLog.txt"
 
-local function get_discipline_log_path()
+function get_discipline_log_path()
 	return (get_spec_data_dir() .. "/" .. DISCIPLINE_LOG_NAME):gsub("\\", "/")
 end
 
-local function vig_discipline_log_has_date(content, date_str)
+function vig_discipline_log_has_date(content, date_str)
 	if content == "" then
 		return false
 	end
@@ -2497,13 +2497,13 @@ end
 
 local vig_log_pending = nil
 
-local function vig_strip_chat_formatting(text)
+function vig_strip_chat_formatting(text)
 	text = tostring(text or "")
 	text = text:gsub("{%x+}", "")
 	return text:gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-local function vig_chat_to_utf8(text)
+function vig_chat_to_utf8(text)
 	text = vig_strip_chat_formatting(text)
 	if text == "" then
 		return ""
@@ -2517,7 +2517,7 @@ local function vig_chat_to_utf8(text)
 	return text
 end
 
-local function vig_reason_loose_match(msg, reason)
+function vig_reason_loose_match(msg, reason)
 	reason = tostring(reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if reason == "" then
 		return true
@@ -2532,7 +2532,7 @@ local function vig_reason_loose_match(msg, reason)
 	return false
 end
 
-local function vig_append_log_raw_line(line)
+function vig_append_log_raw_line(line)
 	line = tostring(line or ""):gsub("\r", ""):gsub("\n", " ")
 	line = line:gsub("^%s+", ""):gsub("%s+$", "")
 	if line == "" then
@@ -2572,7 +2572,7 @@ local function vig_append_log_raw_line(line)
 	wf:close()
 end
 
-local function vig_parse_discipline_log_sections()
+function vig_parse_discipline_log_sections()
 	local path = get_discipline_log_path()
 	if not doesFileExist(path) then
 		return {}
@@ -3091,7 +3091,7 @@ function vig_disc_log.render(counts, zogs_tree, total, filtered)
 	end
 end
 
-local function vig_render_binder_gwarn_fields(script_h)
+function vig_render_binder_gwarn_fields(script_h)
 	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Спец. выговор"))
 	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
 	imgui.InputText("##binder_cmd_gwarn", SpecBinderUi.buf_cmd_gwarn, 64)
@@ -3109,7 +3109,7 @@ local function vig_render_binder_gwarn_fields(script_h)
 	)
 end
 
-local function vig_render_binder_fire_fields(script_h)
+function vig_render_binder_fire_fields(script_h)
 	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Увольнение"))
 	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
 	imgui.InputText("##binder_cmd_fire", SpecBinderUi.buf_cmd_fire, 64)
@@ -3129,7 +3129,7 @@ local function vig_render_binder_fire_fields(script_h)
 	)
 end
 
-local function vig_render_binder_dismiss_fields(script_h)
+function vig_render_binder_dismiss_fields(script_h)
 	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Dismiss"))
 	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
 	imgui.InputText("##binder_cmd_dismiss", SpecBinderUi.buf_cmd_dismiss, 64)
@@ -3186,7 +3186,7 @@ function vig_render_binder_rp_tab(panel_h)
 	imgui.EndChild()
 end
 
-local function vig_render_binder_update_tab()
+function vig_render_binder_update_tab()
 	imgui.TextWrapped(
 		im_utf8("Обновление с GitHub (VigUpdate.json). Скачивает статьи и/или скрипт, если в манифесте версия новее.")
 	)
@@ -3203,7 +3203,7 @@ local function vig_render_binder_update_tab()
 	end
 end
 
-local function vig_render_ogk_tracker_settings_tab(panel_h)
+function vig_render_ogk_tracker_settings_tab(panel_h)
 	local list_h = vig_binder_tab_inner_height(panel_h, 0)
 	imgui.BeginChild("##ogk_tracker_settings_scroll", imgui.ImVec2(0, list_h), true)
 	imgui.TextWrapped(
@@ -3333,7 +3333,7 @@ end
 
 local log_date_expanded = {}
 
-local function vig_render_discipline_log_content(panel_h)
+function vig_render_discipline_log_content(panel_h)
 	imgui.InputTextWithHint(
 		"##log_search",
 		im_utf8("Поиск по логу (дата, ник, статья…)"),
@@ -3412,7 +3412,7 @@ local function vig_render_discipline_log_content(panel_h)
 	imgui.EndChild()
 end
 
-local function vig_render_binder_settings_tabs(panel_h)
+function vig_render_binder_settings_tabs(panel_h)
 	panel_h = panel_h or math.max(280 * custom_dpi, imgui.GetContentRegionAvail().y)
 	if imgui.BeginTabBar("##binder_tabs") then
 		if imgui.BeginTabItem(im_utf8("Отыгровки##binder_tab_rp")) then
@@ -3439,7 +3439,7 @@ local function vig_render_binder_settings_tabs(panel_h)
 	end
 end
 
-local function vig_set_log_pending(action_type, player_id, article_reason)
+function vig_set_log_pending(action_type, player_id, article_reason)
 	vig_log_pending = {
 		action_type = action_type,
 		reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", ""),
@@ -3448,7 +3448,7 @@ local function vig_set_log_pending(action_type, player_id, article_reason)
 	}
 end
 
-local function vig_try_log_from_server_message(text)
+function vig_try_log_from_server_message(text)
 	if not vig_log_pending then
 		return
 	end
@@ -3519,7 +3519,7 @@ local function vig_try_log_from_server_message(text)
 	end
 end
 
-local function vig_normalize_incoming_message(text)
+function vig_normalize_incoming_message(text)
 	if type(text) == "string" then
 		return text
 	end
@@ -3529,7 +3529,7 @@ local function vig_normalize_incoming_message(text)
 	return tostring(text or "")
 end
 
-local function send_discipline_command(player_id, article_reason, action_type)
+function send_discipline_command(player_id, article_reason, action_type)
 	local id = tonumber(player_id)
 	local chat_line = build_discipline_chat_line(id, article_reason, action_type)
 	local reason = tostring(article_reason or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -3597,7 +3597,7 @@ local function send_discipline_command(player_id, article_reason, action_type)
 	end)
 end
 
-local function ensure_json_file_exists()
+function ensure_json_file_exists()
 	if doesFileExist(SPEC_JSON_PATH) then
 		return
 	end
@@ -3663,7 +3663,7 @@ load_articles = function(quiet)
 	end
 end
 
-local function is_valid_target_id(id)
+function is_valid_target_id(id)
 	id = tonumber(id)
 	if not id or id < 0 or id > 999 then
 		return false
@@ -3672,7 +3672,7 @@ local function is_valid_target_id(id)
 	return id == my or sampIsPlayerConnected(id)
 end
 
-local function process_gwarn_menu_command_arg(arg)
+function process_gwarn_menu_command_arg(arg)
 	SPEC_JSON_PATH = get_spec_json_path()
 	SPEC_BINDER_JSON_PATH = get_spec_binder_json_path()
 	load_gwarn_binder_settings()
@@ -3711,7 +3711,7 @@ local function process_gwarn_menu_command_arg(arg)
 end
 
 --- samp.events sometimes passes string, sometimes table (compat)
-local function normalize_outgoing_text(text)
+function normalize_outgoing_text(text)
 	if type(text) == "string" then
 		return text
 	end
@@ -3721,7 +3721,7 @@ local function normalize_outgoing_text(text)
 	return ""
 end
 
-local function parse_slash_command(text)
+function parse_slash_command(text)
 	text = normalize_outgoing_text(text)
 	if text == "" then
 		return nil, nil
@@ -3737,7 +3737,7 @@ local function parse_slash_command(text)
 	return cmd:lower(), a or ""
 end
 
-local function try_intercept_outgoing_command(text)
+function try_intercept_outgoing_command(text)
 	local cmd, a = parse_slash_command(text)
 	if cmd == GWARN_MENU_CMD or cmd == GWARN_MENU_CMD_ALT then
 		local ok, err = pcall(process_gwarn_menu_command_arg, a or "")
@@ -3764,14 +3764,14 @@ end
 local gwarn_inner_onSendCommand
 local gwarn_inner_onServerMessage
 
-local function gwarn_onServerMessage(color, text)
+function gwarn_onServerMessage(color, text)
 	vig_try_log_from_server_message(vig_normalize_incoming_message(text))
 	if gwarn_inner_onServerMessage then
 		return gwarn_inner_onServerMessage(color, text)
 	end
 end
 
-local function gwarn_onSendCommand(text)
+function gwarn_onSendCommand(text)
 	if try_intercept_outgoing_command(text) then
 		return false
 	end
@@ -3781,7 +3781,7 @@ local function gwarn_onSendCommand(text)
 end
 
 --- Only onSendCommand (onSendChat hook broke Arizona / second message went to server)
-local function ensure_sampev_hooks()
+function ensure_sampev_hooks()
 	if not sampev_ok or not sampev then
 		return
 	end
@@ -3831,7 +3831,7 @@ function count_lines_in_text(text, max_length)
 	return #lines
 end
 
-local function vig_text_width_utf8(text)
+function vig_text_width_utf8(text)
 	local ok, sz = pcall(function()
 		return imgui.CalcTextSize(im_utf8(tostring(text or "")))
 	end)
@@ -3841,7 +3841,7 @@ local function vig_text_width_utf8(text)
 	return 0, 16 * custom_dpi
 end
 
-local function vig_wrap_text_for_width(text, max_width_px)
+function vig_wrap_text_for_width(text, max_width_px)
 	text = tostring(text or "")
 	max_width_px = math.max(80, max_width_px or 200)
 	local lines = {}
@@ -3892,7 +3892,7 @@ function imgui.GetMiddleButtonX(count)
 end
 
 --- Nickname from SAMP is often CP1251; JSON fields are UTF-8 (use im_utf8).
-local function im_samp_nick(s)
+function im_samp_nick(s)
 	local ok, r = pcall(function()
 		return u8(tostring(s or ""))
 	end)
@@ -3903,7 +3903,7 @@ local function im_samp_nick(s)
 end
 
 --- Видимый курсор в меню; без sampToggleCursor (он блокирует ходьбу). Вариант safery_disable_cursor (HideCursor=true) на части сборок даёт пропажу курсора и залипание ввода — здесь всегда false при открытом меню.
-local function vig_apply_cursor_arizona(player)
+function vig_apply_cursor_arizona(player)
 	if not SpecMenu.Window[0] then
 		return
 	end
@@ -3913,7 +3913,7 @@ local function vig_apply_cursor_arizona(player)
 	player.HideCursor = false
 end
 
-local function vig_spec_ensure_theme_once()
+function vig_spec_ensure_theme_once()
 	if spec_theme_lazy_done then
 		return
 	end
@@ -4267,7 +4267,7 @@ function initialize_commands()
 	end
 end
 
-local function start_sampev_hooks_loop()
+function start_sampev_hooks_loop()
 	if not lua_thread or not lua_thread.create then
 		return
 	end
