@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.6")
+script_version("6.1.7")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.6"
+local SCRIPT_VERSION_TEXT = "6.1.7"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -272,6 +272,7 @@ local GWARN_MENU_CMD_ALT = "gw"
 local GWARN_RELOAD_CMD = "vigmenu_reload"
 local GWARN_SERVER_CMD = "gwarn"
 local DEMOTE_SERVER_CMD = "demoute"
+local DISMISS_SERVER_CMD = "dismiss"
 local DISCIPLINE_ACTION_GWARN = "gwarn"
 local DISCIPLINE_ACTION_FIRE = "fire"
 local message_color = 0x009eff
@@ -340,12 +341,15 @@ local GWARN_BINDER_MODAL_TITLE = "Настройки VigMenu##gwarn_binder_modal
 local SpecBinderUi = {
 	buf_script_gwarn = imgui.new.char[8192](),
 	buf_script_fire = imgui.new.char[8192](),
+	buf_script_dismiss = imgui.new.char[8192](),
 	buf_bind = imgui.new.char[512](),
 	buf_delay_gwarn = imgui.new.char[16](),
 	buf_delay_fire = imgui.new.char[16](),
+	buf_delay_dismiss = imgui.new.char[16](),
 	buf_fire_ban_days = imgui.new.char[8](),
 	buf_cmd_gwarn = imgui.new.char[64](),
 	buf_cmd_fire = imgui.new.char[64](),
+	buf_cmd_dismiss = imgui.new.char[64](),
 	buf_ogk_search = imgui.new.char[256](),
 	buf_log_search = imgui.new.char[256](),
 	buf_ogk_log_title = imgui.new.char[128](),
@@ -391,6 +395,9 @@ local gwarn_binder = {
 	delay_ms_fire = 900,
 	fire_ban_days = 0,
 	server_cmd_fire = "demoute",
+	rp_script_dismiss = "",
+	delay_ms_dismiss = 900,
+	server_cmd_dismiss = "dismiss",
 	bind_chat_open = "[]",
 	bind_stop_rp = "[]",
 	ogk_enabled = false,
@@ -1895,6 +1902,9 @@ local function get_binder_server_cmd(action_type)
 	if action_type == DISCIPLINE_ACTION_FIRE then
 		return normalize_server_cmd(gwarn_binder.server_cmd_fire, DEMOTE_SERVER_CMD)
 	end
+	if action_type == DISMISS_SERVER_CMD then
+		return normalize_server_cmd(gwarn_binder.server_cmd_dismiss, DISMISS_SERVER_CMD)
+	end
 	return normalize_server_cmd(gwarn_binder.server_cmd_gwarn, GWARN_SERVER_CMD)
 end
 
@@ -1910,6 +1920,9 @@ local function apply_binder_table(data)
 	if type(data.rp_script_fire) == "string" then
 		gwarn_binder.rp_script_fire = data.rp_script_fire
 	end
+	if type(data.rp_script_dismiss) == "string" then
+		gwarn_binder.rp_script_dismiss = data.rp_script_dismiss
+	end
 	if data.delay_ms_gwarn ~= nil then
 		gwarn_binder.delay_ms_gwarn = parse_binder_delay_ms(data.delay_ms_gwarn, 900)
 	elseif data.delay_ms ~= nil then
@@ -1917,6 +1930,9 @@ local function apply_binder_table(data)
 	end
 	if data.delay_ms_fire ~= nil then
 		gwarn_binder.delay_ms_fire = parse_binder_delay_ms(data.delay_ms_fire, 900)
+	end
+	if data.delay_ms_dismiss ~= nil then
+		gwarn_binder.delay_ms_dismiss = parse_binder_delay_ms(data.delay_ms_dismiss, 900)
 	end
 	if data.fire_ban_days ~= nil then
 		gwarn_binder.fire_ban_days = clamp_fire_ban_days(data.fire_ban_days)
@@ -1926,6 +1942,9 @@ local function apply_binder_table(data)
 	end
 	if type(data.server_cmd_fire) == "string" then
 		gwarn_binder.server_cmd_fire = normalize_server_cmd(data.server_cmd_fire, DEMOTE_SERVER_CMD)
+	end
+	if type(data.server_cmd_dismiss) == "string" then
+		gwarn_binder.server_cmd_dismiss = normalize_server_cmd(data.server_cmd_dismiss, DISMISS_SERVER_CMD)
 	end
 	if type(data.bind_chat_open) == "string" then
 		gwarn_binder.bind_chat_open = data.bind_chat_open
@@ -1995,10 +2014,14 @@ local function binder_template_has_scripts(tpl)
 		g = tpl.rp_script
 	end
 	local f = tpl.rp_script_fire
+	local d = tpl.rp_script_dismiss
 	if type(g) == "string" and g:match("%S") then
 		return true
 	end
 	if type(f) == "string" and f:match("%S") then
+		return true
+	end
+	if type(d) == "string" and d:match("%S") then
 		return true
 	end
 	return false
@@ -2091,8 +2114,11 @@ local function create_user_binder_from_default()
 		gwarn_binder.rp_script_fire = ""
 		gwarn_binder.delay_ms_fire = 900
 		gwarn_binder.fire_ban_days = 0
+		gwarn_binder.rp_script_dismiss = ""
+		gwarn_binder.delay_ms_dismiss = 900
 		gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
 		gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
+		gwarn_binder.server_cmd_dismiss = DISMISS_SERVER_CMD
 		gwarn_binder.bind_chat_open = "[]"
 		gwarn_binder.bind_stop_rp = "[]"
 		return save_gwarn_binder_settings()
@@ -2109,7 +2135,8 @@ end
 local function ensure_binder_scripts_from_template()
 	local need_g = not binder_script_nonempty(gwarn_binder.rp_script_gwarn)
 	local need_f = not binder_script_nonempty(gwarn_binder.rp_script_fire)
-	if not need_g and not need_f then
+	local need_d = not binder_script_nonempty(gwarn_binder.rp_script_dismiss)
+	if not need_g and not need_f and not need_d then
 		return false
 	end
 	local tpl = read_binder_template_table()
@@ -2127,7 +2154,10 @@ local function ensure_binder_scripts_from_template()
 	if need_f and type(tpl.rp_script_fire) == "string" and tpl.rp_script_fire:match("%S") then
 		gwarn_binder.rp_script_fire = tpl.rp_script_fire
 	end
-	return need_g or need_f
+	if need_d and type(tpl.rp_script_dismiss) == "string" and tpl.rp_script_dismiss:match("%S") then
+		gwarn_binder.rp_script_dismiss = tpl.rp_script_dismiss
+	end
+	return need_g or need_f or need_d
 end
 
 local function encode_binder_json(t)
@@ -2153,12 +2183,15 @@ end
 local function binder_ui_sync_from_runtime()
 	utf8_to_charbuf(gwarn_binder.rp_script_gwarn, SpecBinderUi.buf_script_gwarn, 8192)
 	utf8_to_charbuf(gwarn_binder.rp_script_fire, SpecBinderUi.buf_script_fire, 8192)
+	utf8_to_charbuf(gwarn_binder.rp_script_dismiss, SpecBinderUi.buf_script_dismiss, 8192)
 	utf8_to_charbuf(gwarn_binder.bind_chat_open, SpecBinderUi.buf_bind, 512)
 	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_gwarn or 900), SpecBinderUi.buf_delay_gwarn, 16)
 	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_fire or 900), SpecBinderUi.buf_delay_fire, 16)
+	utf8_to_charbuf(tostring(gwarn_binder.delay_ms_dismiss or 900), SpecBinderUi.buf_delay_dismiss, 16)
 	utf8_to_charbuf(tostring(gwarn_binder.fire_ban_days or 0), SpecBinderUi.buf_fire_ban_days, 8)
 	utf8_to_charbuf(get_binder_server_cmd(DISCIPLINE_ACTION_GWARN), SpecBinderUi.buf_cmd_gwarn, 64)
 	utf8_to_charbuf(get_binder_server_cmd(DISCIPLINE_ACTION_FIRE), SpecBinderUi.buf_cmd_fire, 64)
+	utf8_to_charbuf(get_binder_server_cmd(DISMISS_SERVER_CMD), SpecBinderUi.buf_cmd_dismiss, 64)
 	vig_ogk_ensure_defaults()
 	SpecBinderUi.ogk_enabled[0] = gwarn_binder.ogk_enabled and true or false
 	SpecBinderUi.ogk_show_log[0] = gwarn_binder.ogk_show_log and true or false
@@ -2182,11 +2215,14 @@ end
 local function binder_ui_apply_to_runtime()
 	gwarn_binder.rp_script_gwarn = charbuf_to_utf8(SpecBinderUi.buf_script_gwarn, 8192)
 	gwarn_binder.rp_script_fire = charbuf_to_utf8(SpecBinderUi.buf_script_fire, 8192)
+	gwarn_binder.rp_script_dismiss = charbuf_to_utf8(SpecBinderUi.buf_script_dismiss, 8192)
 	gwarn_binder.delay_ms_gwarn = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_gwarn, 16))
 	gwarn_binder.delay_ms_fire = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_fire, 16))
+	gwarn_binder.delay_ms_dismiss = clamp_binder_delay_ms(charbuf_to_utf8(SpecBinderUi.buf_delay_dismiss, 16))
 	gwarn_binder.fire_ban_days = clamp_fire_ban_days(charbuf_to_utf8(SpecBinderUi.buf_fire_ban_days, 8))
 	gwarn_binder.server_cmd_gwarn = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_gwarn, 64), GWARN_SERVER_CMD)
 	gwarn_binder.server_cmd_fire = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_fire, 64), DEMOTE_SERVER_CMD)
+	gwarn_binder.server_cmd_dismiss = normalize_server_cmd(charbuf_to_utf8(SpecBinderUi.buf_cmd_dismiss, 64), DISMISS_SERVER_CMD)
 	gwarn_binder.ogk_enabled = SpecBinderUi.ogk_enabled[0] and true or false
 	gwarn_binder.ogk_show_log = SpecBinderUi.ogk_show_log[0] and true or false
 	gwarn_binder.ogk_notify = SpecBinderUi.ogk_notify[0] and true or false
@@ -2278,8 +2314,11 @@ save_gwarn_binder_settings = function()
 			rp_script_fire = gwarn_binder.rp_script_fire,
 			delay_ms_fire = gwarn_binder.delay_ms_fire,
 			fire_ban_days = gwarn_binder.fire_ban_days,
+			rp_script_dismiss = gwarn_binder.rp_script_dismiss,
+			delay_ms_dismiss = gwarn_binder.delay_ms_dismiss,
 			server_cmd_gwarn = gwarn_binder.server_cmd_gwarn,
 			server_cmd_fire = gwarn_binder.server_cmd_fire,
+			server_cmd_dismiss = gwarn_binder.server_cmd_dismiss,
 			bind_chat_open = gwarn_binder.bind_chat_open,
 			bind_stop_rp = gwarn_binder.bind_stop_rp,
 			ogk_enabled = gwarn_binder.ogk_enabled and true or false,
@@ -2306,8 +2345,11 @@ local function load_gwarn_binder_settings()
 	gwarn_binder.rp_script_fire = ""
 	gwarn_binder.delay_ms_fire = 900
 	gwarn_binder.fire_ban_days = 0
+	gwarn_binder.rp_script_dismiss = ""
+	gwarn_binder.delay_ms_dismiss = 900
 	gwarn_binder.server_cmd_gwarn = GWARN_SERVER_CMD
 	gwarn_binder.server_cmd_fire = DEMOTE_SERVER_CMD
+	gwarn_binder.server_cmd_dismiss = DISMISS_SERVER_CMD
 	gwarn_binder.bind_chat_open = "[]"
 	gwarn_binder.bind_stop_rp = "[]"
 	gwarn_binder.ogk_enabled = false
@@ -2586,6 +2628,9 @@ function vig_disc_log.line_kind(body)
 	if body:find("Уволил", 1, true) or utf8_rupper(body):find("УВОЛИЛ", 1, true) then
 		return "fire"
 	end
+	if body:find("выгнал", 1, true) or body:find("выгнали", 1, true) then
+		return "fire"
+	end
 	local u = utf8_rupper(body)
 	if u:find("СПЕЦ", 1, true) and u:find("ВЫГОВОР", 1, true) then
 		return "gwarn"
@@ -2617,6 +2662,10 @@ function vig_disc_log.line_faction(body)
 		return vig_disc_log.normalize_faction(faction)
 	end
 	faction = body:match("Уволил%s+%S+%s+%[([^%]]+)%]")
+	if faction and faction ~= "" then
+		return vig_disc_log.normalize_faction(faction)
+	end
+	faction = body:match("из%s+организации%s+(.+)%.")
 	if faction and faction ~= "" then
 		return vig_disc_log.normalize_faction(faction)
 	end
@@ -3031,13 +3080,33 @@ local function vig_render_binder_fire_fields(script_h)
 	)
 end
 
+local function vig_render_binder_dismiss_fields(script_h)
+	imgui.TextColored(imgui.ImVec4(0.55, 0.75, 1.0, 1.0), im_utf8("Dismiss"))
+	imgui.TextWrapped(im_utf8("Команда после отыгровки (без /):"))
+	imgui.InputText("##binder_cmd_dismiss", SpecBinderUi.buf_cmd_dismiss, 64)
+	if imgui.IsItemHovered() then
+		imgui.SetTooltip(im_utf8("Формат: dismiss — подставятся id и статья"))
+	end
+	imgui.TextWrapped(im_utf8("Задержка между сообщениями (мс):"))
+	imgui.InputText("##binder_delay_dismiss", SpecBinderUi.buf_delay_dismiss, 16)
+	local multiline_h = script_h or 140 * custom_dpi
+	imgui.InputTextMultiline(
+		"##binder_script_dismiss",
+		SpecBinderUi.buf_script_dismiss,
+		8192,
+		imgui.ImVec2(vig_imgui_content_w(), multiline_h)
+	)
+end
+
 function vig_render_binder_rp_tab(panel_h)
 	local list_h = vig_binder_tab_inner_height(panel_h, 0)
 	imgui.BeginChild("##binder_rp_scroll", imgui.ImVec2(0, list_h), true)
-	local half_h = math.max(100 * custom_dpi, (list_h - 120 * custom_dpi) * 0.42)
-	vig_render_binder_gwarn_fields(half_h)
+	local third_h = math.max(80 * custom_dpi, (list_h - 160 * custom_dpi) * 0.28)
+	vig_render_binder_gwarn_fields(third_h)
 	imgui.Separator()
-	vig_render_binder_fire_fields(half_h)
+	vig_render_binder_fire_fields(third_h)
+	imgui.Separator()
+	vig_render_binder_dismiss_fields(third_h)
 	imgui.Spacing()
 	imgui.Separator()
 	imgui.Spacing()
@@ -3383,6 +3452,21 @@ local function vig_try_log_from_server_message(text)
 		local days = clamp_fire_ban_days(gwarn_binder.fire_ban_days)
 		vig_append_log_raw_line(msg .. " (" .. tostring(days) .. ")")
 		vig_log_pending = nil
+		return
+	end
+
+	if p.action_type == DISMISS_SERVER_CMD then
+		if not has_word(msg, "выгнал", "Выгнал", "выгнали", "Выгнали") then
+			return
+		end
+		if not has_word(msg, "причина", "Причина") then
+			return
+		end
+		if not vig_reason_loose_match(msg, p.reason) then
+			return
+		end
+		vig_append_log_raw_line(msg)
+		vig_log_pending = nil
 	end
 end
 
@@ -3404,6 +3488,9 @@ local function send_discipline_command(player_id, article_reason, action_type)
 	if action_type == DISCIPLINE_ACTION_FIRE then
 		script = tostring(gwarn_binder.rp_script_fire or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		dms = clamp_binder_delay_ms(gwarn_binder.delay_ms_fire)
+	elseif action_type == DISMISS_SERVER_CMD then
+		script = tostring(gwarn_binder.rp_script_dismiss or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		dms = clamp_binder_delay_ms(gwarn_binder.delay_ms_dismiss)
 	else
 		script = tostring(gwarn_binder.rp_script_gwarn or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		dms = clamp_binder_delay_ms(gwarn_binder.delay_ms_gwarn)
@@ -4028,7 +4115,7 @@ function register_spec_imgui()
 										imgui.TextWrapped(im_utf8(item.text))
 										vig_pop_content_text_wrap(pushed_wrap)
 										imgui.Separator()
-										local btn_w = imgui.GetMiddleButtonX(3)
+										local btn_w = imgui.GetMiddleButtonX(4)
 										local btn_h = 28 * custom_dpi
 										if
 											imgui.Button(
@@ -4058,6 +4145,17 @@ function register_spec_imgui()
 										then
 											SpecMenu.Window[0] = false
 											send_discipline_command(spec_target_id, item.reason, DISCIPLINE_ACTION_FIRE)
+											imgui.CloseCurrentPopup()
+										end
+										imgui.SameLine()
+										if
+											imgui.Button(
+												im_utf8("Dismiss##spec_dismiss"),
+												imgui.ImVec2(btn_w, btn_h)
+											)
+										then
+											SpecMenu.Window[0] = false
+											send_discipline_command(spec_target_id, item.reason, DISMISS_SERVER_CMD)
 											imgui.CloseCurrentPopup()
 										end
 										imgui.EndPopup()
