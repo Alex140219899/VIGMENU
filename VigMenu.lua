@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.8")
+script_version("6.1.9")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.8"
+local SCRIPT_VERSION_TEXT = "6.1.9"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -1085,7 +1085,7 @@ end
 
 local last_manifest_cache = nil
 
-local function download_url_to_file_sync(dest, url, timeout_sec)
+local function download_url_to_file_sync(dest, url, timeout_sec, quiet)
 	if type(downloadUrlToFile) ~= "function" then
 		print("[gwarnn] downloadUrlToFile недоступна (старая сборка MoonLoader?)")
 		return false
@@ -1115,17 +1115,19 @@ local function download_url_to_file_sync(dest, url, timeout_sec)
 		n = n + 1
 	end
 	if not done then
-		print(
-			"[gwarnn] таймаут загрузки ("
-				.. tostring(timeout_sec or 60)
-				.. " с), колбэк не завершился: "
-				.. tostring(url)
-		)
-		pcall(
-			sampAddChatMessageUtf8,
-			"{009EFF}[Vigmenu]{ffffff} Таймаут загрузки. С raw GitHub из игры часто так (сеть/регион). Скрипт пробует зеркало jsDelivr — обновите VigMenu.lua. Или положите VigArticles.json вручную в moonloader/VigMenu/",
-			message_color
-		)
+		if not quiet then
+			print(
+				"[gwarnn] таймаут загрузки ("
+					.. tostring(timeout_sec or 60)
+					.. " с), колбэк не завершился: "
+					.. tostring(url)
+			)
+			pcall(
+				sampAddChatMessageUtf8,
+				"{009EFF}[Vigmenu]{ffffff} Таймаут загрузки. С raw GitHub из игры часто так (сеть/регион). Скрипт пробует зеркало jsDelivr — обновите VigMenu.lua. Или положите VigArticles.json вручную в moonloader/VigMenu/",
+				message_color
+			)
+		end
 		pcall(os.remove, dest)
 		return false
 	end
@@ -1156,7 +1158,7 @@ local function vig_url_with_cache_bust(base)
 	return base .. sep .. "t=" .. tostring(os.time())
 end
 
---- jsDelivr кэширует файлы: сначала raw GitHub с cache-bust, затем зеркало.
+--- jsDelivr кэширует @main — для игры сначала CDN, raw GitHub коротким таймаутом.
 local function vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
 	local raw = {}
 	if manifest_url and manifest_url ~= "" then
@@ -1176,6 +1178,38 @@ local function vig_build_download_urls(jsdelivr_static, manifest_url, version_ta
 		raw[#raw + 1] = jsdelivr_static
 	end
 	return vig_urls_dedupe(raw)
+end
+
+local function vig_url_is_jsdelivr(url)
+	return type(url) == "string" and url:find("cdn.jsdelivr.net", 1, true) ~= nil
+end
+
+local function vig_urls_cdn_first(jsdelivr_static, manifest_url, version_tag)
+	local all = vig_build_download_urls(jsdelivr_static, manifest_url, version_tag)
+	local cdn, rest = {}, {}
+	for _, u in ipairs(all) do
+		if vig_url_is_jsdelivr(u) then
+			cdn[#cdn + 1] = u
+		else
+			rest[#rest + 1] = u
+		end
+	end
+	local out = {}
+	for _, u in ipairs(cdn) do
+		out[#out + 1] = u
+	end
+	for _, u in ipairs(rest) do
+		out[#out + 1] = u
+	end
+	return out
+end
+
+local function vig_download_timeout_for_url(url, opts)
+	opts = type(opts) == "table" and opts or {}
+	if vig_url_is_jsdelivr(url) then
+		return opts.cdn_timeout or 22
+	end
+	return opts.raw_timeout or 12
 end
 
 --- Скачивает VigMenu.lua со всех URL и берёт файл с максимальной версией (jsDelivr часто отдаёт старый кэш).
@@ -1299,36 +1333,39 @@ local function vig_manifest_with_fresh_script_version(m)
 	return out
 end
 
---- jsDelivr кэширует @main надолго — сначала raw GitHub с cache-bust, затем зеркало. Берём манифест с максимальной версией.
-local function fetch_update_manifest()
+--- jsDelivr кэширует @main — CDN первым; raw GitHub короткий таймаут (из игры часто недоступен).
+local function fetch_update_manifest(opts)
+	opts = type(opts) == "table" and opts or {}
+	local quiet = opts.quiet and true or false
+	if opts.fast and last_manifest_cache then
+		return last_manifest_cache, nil
+	end
 	local tmp = (worked_dir .. "/.gwarnn_manifest_tmp.json"):gsub("\\", "/")
 	if doesFileExist(tmp) then
 		pcall(os.remove, tmp)
 	end
-	local raw_urls = {}
-	local u = UPDATE_MANIFEST_URL
-	--- Свежий GitHub первым (после push актуальнее jsDelivr).
-	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(u)
-	raw_urls[#raw_urls + 1] = u
-	raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(UPDATE_MANIFEST_URL_JS)
-	raw_urls[#raw_urls + 1] = UPDATE_MANIFEST_URL_JS
-	if u:find("/main/", 1, true) then
-		local m = u:gsub("/main/", "/master/", 1)
-		raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(m)
-		raw_urls[#raw_urls + 1] = m
-	elseif u:find("/master/", 1, true) then
-		local m = u:gsub("/master/", "/main/", 1)
-		raw_urls[#raw_urls + 1] = vig_url_with_cache_bust(m)
-		raw_urls[#raw_urls + 1] = m
+	local urls = vig_urls_cdn_first(UPDATE_MANIFEST_URL_JS, UPDATE_MANIFEST_URL, SCRIPT_VERSION_TEXT)
+	if opts.fast then
+		local cdn_only = {}
+		for _, u in ipairs(urls) do
+			if vig_url_is_jsdelivr(u) then
+				cdn_only[#cdn_only + 1] = u
+			end
+		end
+		urls = cdn_only
 	end
-	local urls = vig_urls_dedupe(raw_urls)
 	local last_err = "не удалось скачать манифест (GitHub и зеркало)"
 	local best_data, best_src = nil, nil
+	local got_cdn = false
 	for _, manifest_url in ipairs(urls) do
+		if opts.fast and got_cdn then
+			break
+		end
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
 		end
-		if download_url_to_file_sync(tmp, manifest_url, 55) then
+		local timeout = vig_download_timeout_for_url(manifest_url, opts)
+		if download_url_to_file_sync(tmp, manifest_url, timeout, quiet or opts.fast) then
 			local f = io.open(tmp, "r")
 			if f then
 				local txt = f:read("*a") or ""
@@ -1356,7 +1393,12 @@ local function fetch_update_manifest()
 						best_data = data
 						best_src = manifest_url
 					end
-					print("[gwarnn] VigUpdate.json v." .. ver .. " ← " .. tostring(manifest_url))
+					if vig_url_is_jsdelivr(manifest_url) then
+						got_cdn = true
+					end
+					if not quiet and not opts.fast then
+						print("[gwarnn] VigUpdate.json v." .. ver .. " ← " .. tostring(manifest_url))
+					end
 				else
 					last_err = "в манифесте нет current_version"
 				end
@@ -1365,14 +1407,16 @@ local function fetch_update_manifest()
 	end
 	if best_data then
 		last_manifest_cache = best_data
-		print(
-			"[gwarnn] выбран манифест v."
-				.. vig_version_trim(best_data.current_version)
-				.. " (статьи "
-				.. tostring(best_data.articles_version or "?")
-				.. ") ← "
-				.. tostring(best_src)
-		)
+		if not quiet and not opts.fast then
+			print(
+				"[gwarnn] выбран манифест v."
+					.. vig_version_trim(best_data.current_version)
+					.. " (статьи "
+					.. tostring(best_data.articles_version or "?")
+					.. ") ← "
+					.. tostring(best_src)
+			)
+		end
 		return best_data, nil
 	end
 	return nil, last_err
@@ -1481,7 +1525,7 @@ local function vig_do_download_script()
 	if doesFileExist(tmp) then
 		pcall(os.remove, tmp)
 	end
-	local script_urls = vig_build_download_urls(UPDATE_SCRIPT_URL_JS, url, UpdateUi.remote_script_ver)
+	local script_urls = vig_urls_cdn_first(UPDATE_SCRIPT_URL_JS, url, UpdateUi.remote_script_ver)
 	local local_v = vig_version_trim(get_local_script_version())
 	local manifest_v = vig_version_trim(UpdateUi.remote_script_ver)
 	local body, new_ver = vig_download_best_script(script_urls, tmp, local_v, manifest_v)
@@ -1696,13 +1740,13 @@ local function vig_do_github_update(opts)
 				if doesFileExist(tmp) then
 					pcall(os.remove, tmp)
 				end
-				local au_list = vig_build_download_urls(VIGARTICLES_URL_JS, url, UpdateUi.remote_articles_ver)
+				local au_list = vig_urls_cdn_first(VIGARTICLES_URL_JS, url, UpdateUi.remote_articles_ver)
 				local dl_ok = false
 				for _, au in ipairs(au_list) do
 					if doesFileExist(tmp) then
 						pcall(os.remove, tmp)
 					end
-					if download_url_to_file_sync(tmp, au, 120) then
+					if download_url_to_file_sync(tmp, au, vig_download_timeout_for_url(au, { cdn_timeout = 90, raw_timeout = 18 })) then
 						dl_ok = true
 						if au ~= url then
 							print("[gwarnn] VigArticles.json: успех с зеркала jsDelivr")
@@ -1807,7 +1851,7 @@ local function vig_delayed_update_hint_after_welcome()
 		if UpdateUi.busy then
 			return
 		end
-		local m, err = fetch_update_manifest()
+		local m, err = fetch_update_manifest({ fast = true, quiet = true })
 		if not m then
 			return
 		end
@@ -2072,12 +2116,16 @@ local function ensure_binder_default_template()
 	if doesFileExist(tmp) then
 		pcall(os.remove, tmp)
 	end
-	local urls = vig_build_download_urls(BINDER_DEFAULT_JSON_URL_JS, BINDER_DEFAULT_JSON_URL, "")
+	local urls = vig_urls_cdn_first(BINDER_DEFAULT_JSON_URL_JS, BINDER_DEFAULT_JSON_URL, SCRIPT_VERSION_TEXT)
 	for _, u in ipairs(urls) do
 		if doesFileExist(tmp) then
 			pcall(os.remove, tmp)
 		end
-		if download_url_to_file_sync(tmp, u, 60) and doesFileExist(tmp) and binder_default_template_valid(tmp) then
+		if
+			download_url_to_file_sync(tmp, u, vig_download_timeout_for_url(u), true)
+			and doesFileExist(tmp)
+			and binder_default_template_valid(tmp)
+		then
 			if spec_copy_file(tmp, dest) then
 				print("[gwarnn] скачан шаблон отыгровки → " .. dest)
 				pcall(os.remove, tmp)
