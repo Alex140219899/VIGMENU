@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.7")
+script_version("6.1.8")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.7"
+local SCRIPT_VERSION_TEXT = "6.1.8"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -2005,6 +2005,24 @@ local function binder_script_nonempty(s)
 	return (tostring(s or ""):match("^%s*(.-)%s*$") or "") ~= ""
 end
 
+local read_binder_json_file
+read_binder_json_file = function(path)
+	if not path or path == "" or not doesFileExist(path) then
+		return nil
+	end
+	local f = io.open(path, "r")
+	if not f then
+		return nil
+	end
+	local txt = f:read("*a") or ""
+	f:close()
+	local ok, data = pcall(decode_json_str, txt)
+	if ok and type(data) == "table" then
+		return data
+	end
+	return nil
+end
+
 local function binder_template_has_scripts(tpl)
 	if type(tpl) ~= "table" then
 		return false
@@ -2029,23 +2047,6 @@ end
 
 local function binder_default_template_valid(path)
 	return binder_template_has_scripts(read_binder_json_file(path))
-end
-
-local function read_binder_json_file(path)
-	if not path or path == "" or not doesFileExist(path) then
-		return nil
-	end
-	local f = io.open(path, "r")
-	if not f then
-		return nil
-	end
-	local txt = f:read("*a") or ""
-	f:close()
-	local ok, data = pcall(decode_json_str, txt)
-	if ok and type(data) == "table" then
-		return data
-	end
-	return nil
 end
 
 --- Шаблон отыгровки в moonloader/VigMenu/VigGwarnBinderDefault.json (из папки скрипта или с GitHub).
