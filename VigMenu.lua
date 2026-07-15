@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.12")
+script_version("6.1.13")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.12"
+local SCRIPT_VERSION_TEXT = "6.1.13"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -416,31 +416,31 @@ local SPEC_BINDER_JSON_PATH = ""
 --- Список сотрудников ОГК (только просмотр в настройках).
 local OGK_STAFF = {
 	{ role = "Ген.Аудитор", name = "Kane Drake" },
-	{ role = "Заместитель Ген.Аудитора", name = "Mae West" },
+	{ role = "Заместитель Ген.Аудитора", name = "Вакантно" },
 	{ role = "Заместитель Ген.Аудитора", name = "Robert Padalecki" },
 	{ role = "Заместитель Ген.Аудитора", name = "Alan Crawford" },
 	{ role = "Федеральный Аудитор", name = "Ludwig Hohenberg" },
 	{ role = "Федеральный Аудитор", name = "Artiom Bounteiro" },
 	{ role = "Федеральный Аудитор", name = "Dominic Fox" },
 	{ role = "Федеральный Аудитор", name = "Danilka Gill" },
-	{ role = "Федеральный Аудитор", name = "Вакантно" },
+	{ role = "Федеральный Аудитор", name = "Chappa Crack" },
 	{ role = "Федеральный Аудитор", name = "Kelly Line" },
 	{ role = "Федеральный Аудитор", name = "Kama Pullya" },
 	{ role = "Федеральный Аудитор", name = "Dmitriy Muller" },
-	{ role = "Федеральный Аудитор", name = "Jennifer Fox" },
+	{ role = "Федеральный Аудитор", name = "Ellie Harriz" },
 	{ role = "Федеральный Аудитор", name = "Huston Sweet" },
 	{ role = "Федеральный Аудитор", name = "Sophie Rein" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Вакантно" },
-	{ role = "Окружной Аудитор", name = "Chappa Crack" },
+	{ role = "Федеральный Аудитор", name = "Torino Mavrodi" },
+	{ role = "Окружной Аудитор", name = "Timothy Zanic" },
 	{ role = "Окружной Аудитор", name = "Chill Henderson" },
+	{ role = "Окружной Аудитор", name = "David Yusupov" },
+	{ role = "Окружной Аудитор", name = "Nikit Shakur" },
 	{ role = "Окружной Аудитор", name = "Maras Crown" },
-	{ role = "Окружной Аудитор", name = "Torino Mavrodi" },
-	{ role = "Помощник Аудитора", name = "Egor Mokrivsky" },
-	{ role = "Помощник Аудитора", name = "Roni Krey" },
+	{ role = "Окружной Аудитор", name = "Takemichi Drake" },
+	{ role = "Окружной Аудитор", name = "Matvey Bond" },
+	{ role = "Окружной Аудитор", name = "Kenny Montero" },
 	{ role = "Помощник Аудитора", name = "Luis Love" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Simon Reversed" },
 	{ role = "Помощник Аудитора", name = "Soda Lykas" },
 	{ role = "Помощник Аудитора", name = "Patrick Kingston" },
 	{ role = "Помощник Аудитора", name = "Dante Fraze" },
@@ -450,11 +450,11 @@ local OGK_STAFF = {
 	{ role = "Помощник Аудитора", name = "Yoshi Swager" },
 	{ role = "Помощник Аудитора", name = "Kirill Mamont" },
 	{ role = "Помощник Аудитора", name = "Risotto Secco" },
-	{ role = "Помощник Аудитора", name = "Timothy Zanic" },
+	{ role = "Помощник Аудитора", name = "Egor Mokrivsky" },
 	{ role = "Помощник Аудитора", name = "August Cashin" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
+	{ role = "Помощник Аудитора", name = "Danik Roger" },
+	{ role = "Помощник Аудитора", name = "Roni Krey" },
+	{ role = "Помощник Аудитора", name = "Stark Butler" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
 	{ role = "Помощник Аудитора", name = "Вакантно" },
@@ -4562,4 +4562,6 @@ function onScriptTerminate()
 	pcall(sampUnregisterChatCommand, GWARN_MENU_CMD)
 	pcall(sampUnregisterChatCommand, GWARN_MENU_CMD_ALT)
 	pcall(sampUnregisterChatCommand, GWARN_RELOAD_CMD)
+end
+
 end

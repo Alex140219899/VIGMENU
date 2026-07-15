@@ -1,8 +1,8 @@
-{
-  "current_version": "6.1.12",
-  "update_info": "Исправлено дублирование фракций в ЗоГС (Армия LS и др.)",
-  "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
-  "articles_version": "18",
-  "articles_info": "Обновлены статьи МО (увольнение / спец. выговор)",
-  "articles_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigArticles.json"
-}
+{
+  "current_version": "6.1.13",
+  "update_info": "Обновлён список сотрудников ОГК",
+  "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
+  "articles_version": "18",
+  "articles_info": "Обновлены статьи МО (увольнение / спец. выговор)",
+  "articles_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigArticles.json"
+}
