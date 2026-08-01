@@ -1,8 +1,16 @@
-{
-  "current_version": "6.1.14",
-  "update_info": "Исправлен краш после обновления списка ОГК (лишние end в конце файла)",
-  "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
-  "articles_version": "18",
-  "articles_info": "Обновлены статьи МО (увольнение / спец. выговор)",
-  "articles_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigArticles.json"
-}
+{
+
+  "current_version": "6.1.15",
+
+  "update_info": "Список ОГК обновлен 01.08.2026",
+
+  "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
+
+  "articles_version": "18",
+
+  "articles_info": "Обновлены статьи МО (увольнение / спец. выговор)",
+
+  "articles_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigArticles.json"
+
+}
+
