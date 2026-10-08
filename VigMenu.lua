@@ -11,7 +11,7 @@
 script_name("Меню выговоров (Vig)")
 script_description("VigMenu: /vigmenu [id] → /gwarn или /demoute")
 script_author("AlexBuhoi")
-script_version("6.1.21")
+script_version("6.1.22")
 
 require("lib.moonloader")
 require("encoding").default = "CP1251"
@@ -169,7 +169,7 @@ local sizeX, sizeY = getScreenResolution()
 
 local worked_dir = getWorkingDirectory():gsub("\\", "/")
 --- Синхронно с script_version() ниже (только приветствие / лог)
-local SCRIPT_VERSION_TEXT = "6.1.21"
+local SCRIPT_VERSION_TEXT = "6.1.22"
 --- Манифест: VigUpdate.json в репозитории на GitHub (ветка main/master).
 local UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigUpdate.json"
 --- Тот же репозиторий через jsDelivr: у части игроков WinInet с игры не получает raw.githubusercontent.com (таймаут без колбэка).
@@ -415,50 +415,55 @@ local SPEC_BINDER_JSON_PATH = ""
 
 --- Список сотрудников ОГК (только просмотр в настройках).
 local OGK_STAFF = {
-	{ role = "Ген.Аудитор", name = "Stepan Gorodskoy" },
-	{ role = "Заместитель Ген.Аудитора", name = "Alan Crawford" },
-	{ role = "Заместитель Ген.Аудитора", name = "Liza Mercy" },
-	{ role = "Заместитель Ген.Аудитора", name = "Artiom Bounteiro" },
-	{ role = "Федеральный Аудитор", name = "Ludwig Hohenberg" },
-	{ role = "Федеральный Аудитор", name = "Huston Sweet" },
-	{ role = "Федеральный Аудитор", name = "Dmitriy Muller" },
-	{ role = "Федеральный Аудитор", name = "Max_Bek" },
-	{ role = "Федеральный Аудитор", name = "Ellie Harris" },
-	{ role = "Окружной Аудитор", name = "Volodya Genshin" },
-	{ role = "Окружной Аудитор", name = "Desern Vengeance" },
-	{ role = "Окружной Аудитор", name = "Lee Karry" },
-	{ role = "Окружной Аудитор", name = "Levi Ackerrman" },
-	{ role = "Окружной Аудитор", name = "Said Yager" },
-	{ role = "Окружной Аудитор", name = "Adam_Fulgenzi" },
-	{ role = "Помощник Аудитора", name = "Oliver Washingtons" },
-	{ role = "Помощник Аудитора", name = "Torino Mavrodi" },
-	{ role = "Помощник Аудитора", name = "Dante Fraze" },
-	{ role = "Помощник Аудитора", name = "Egor Mokrivskyi" },
-	{ role = "Помощник Аудитора", name = "Artem Traktorov" },
-	{ role = "Помощник Аудитора", name = "Mall Monopolly" },
-	{ role = "Помощник Аудитора", name = "Nuck Forever" },
-	{ role = "Помощник Аудитора", name = "Kazah Monopolist" },
-	{ role = "Помощник Аудитора", name = "Evan Cryshore" },
-	{ role = "Помощник Аудитора", name = "Mike Rockwell" },
-	{ role = "Помощник Аудитора", name = "Kent King" },
-	{ role = "Помощник Аудитора", name = "Kirill Morys" },
-	{ role = "Помощник Аудитора", name = "Sultan Disney" },
-	{ role = "Помощник Аудитора", name = "Vitalik Quinn" },
-	{ role = "Помощник Аудитора", name = "Craw Ford" },
-	{ role = "Помощник Аудитора", name = "Yaroslav Kulak" },
-	{ role = "Помощник Аудитора", name = "Daisuke Prime" },
-	{ role = "Помощник Аудитора", name = "August DeGuerra" },
-	{ role = "Помощник Аудитора", name = "Hugo Old" },
-	{ role = "Помощник Аудитора", name = "Eva Fellwood" },
-	{ role = "Помощник Аудитора", name = "Justin Gaetje" },
-	{ role = "Помощник Аудитора", name = "Loriqal Mercy" },
-	{ role = "Помощник Аудитора", name = "Alexandr Mercy" },
-	{ role = "Помощник Аудитора", name = "Ruslan Drak" },
-	{ role = "Помощник Аудитора", name = "James Hunt" },
-	{ role = "Помощник Аудитора", name = "Вакантно" },
-	{ role = "Помощник Аудитора", name = "Lee Karry" },
-	{ role = "Помощник Аудитора", name = "Aleksandr Kadzuto" },
-	{ role = "Помощник Аудитора", name = "Vic Mercy" },
+    { role = "Ген. Аудитор", name = "Stepan Gorodskoy" },
+    { role = "Заместитель Ген. Аудитора", name = "Alan Crawford" },
+    { role = "Заместитель Ген. Аудитора", name = "Liza Mercy" },
+    { role = "Заместитель Ген. Аудитора", name = "Вакантно" },
+    { role = "Заместитель Ген. Аудитора", name = "Artiom Bounteiro" },
+    { role = "Федеральный Аудитор", name = "Ludwig Hohenberg" },
+    { role = "Федеральный Аудитор", name = "Huston Sweet" },
+    { role = "Федеральный Аудитор", name = "Dmitriy Muller" },
+    { role = "Федеральный Аудитор", name = "Max_Bek" },
+    { role = "Федеральный Аудитор", name = "Ellie Harris" },
+    { role = "Федеральный Аудитор", name = "Matt Medrock" },
+    { role = "Окружной Аудитор", name = "Desern Vengeance" },
+    { role = "Окружной Аудитор", name = "Lee Karry" },
+    { role = "Окружной Аудитор", name = "Levi Ackerrman" },
+    { role = "Окружной Аудитор", name = "Tonny Stallone" },
+    { role = "Окружной Аудитор", name = "Adam_Fulgenzi" },
+    { role = "Помощник Аудитора", name = "Torino Mavrodi" },
+    { role = "Помощник Аудитора", name = "Dante Fraze" },
+    { role = "Помощник Аудитора", name = "Egor Mokrivskyi" },
+    { role = "Помощник Аудитора", name = "Artem Traktorov" },
+    { role = "Помощник Аудитора", name = "Вакантно" },
+    { role = "Помощник Аудитора", name = "Nuck Forever" },
+    { role = "Помощник Аудитора", name = "Kazah Monopolist" },
+    { role = "Помощник Аудитора", name = "Evan Cryshore" },
+    { role = "Помощник Аудитора", name = "Mike Rockwell" },
+    { role = "Помощник Аудитора", name = "Kent King" },
+    { role = "Помощник Аудитора", name = "Kirill Morys" },
+    { role = "Помощник Аудитора", name = "Sultan Disney" },
+    { role = "Помощник Аудитора", name = "Vitalik Quinn" },
+    { role = "Помощник Аудитора", name = "Craw Ford" },
+    { role = "Помощник Аудитора", name = "Yaroslav Kulak" },
+    { role = "Помощник Аудитора", name = "Daisuke Prime" },
+    { role = "Помощник Аудитора", name = "August DeGuerra" },
+    { role = "Помощник Аудитора", name = "Вакантно" },
+    { role = "Помощник Аудитора", name = "Eva Fellwood" },
+    { role = "Помощник Аудитора", name = "Luckas Mercy" },
+    { role = "Помощник Аудитора", name = "Loriqal Mercy" },
+    { role = "Помощник Аудитора", name = "Alexandr Mercy" },
+    { role = "Помощник Аудитора", name = "Ruslan Drak" },
+    { role = "Помощник Аудитора", name = "James Hunt" },
+    { role = "Помощник Аудитора", name = "Dante Giordano" },
+    { role = "Помощник Аудитора", name = "Lee Karry" },
+    { role = "Помощник Аудитора", name = "Aleksandr Kadzuto" },
+    { role = "Помощник Аудитора", name = "Vic Mercy" },
+    { role = "Помощник Аудитора", name = "Vitalik Rememberzz" },
+    { role = "Помощник Аудитора", name = "Megan Lopez" },
+    { role = "Помощник Аудитора", name = "Robert Carter" },
+    { role = "Помощник Аудитора", name = "Molly Hearts" },
+    { role = "Помощник Аудитора", name = "Elizabeth Yamishiro" },
 }
 
 local ogk_nearby = {}
