@@ -1,14 +1,14 @@
 {
 
-  "current_version": "6.1.22",
+  "current_version": "6.1.23",
 
-  "update_info": "Обновил конфиги огк и статьи 08.10.2026",
+  "update_info": "Скрипт больше не доступен",
 
   "update_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigMenu.lua",
 
-  "articles_version": "21",
+  "articles_version": "22",
 
-  "articles_info": "Обновил статьи 08.10.2026",
+  "articles_info": "Скрипт больше не доступен",
 
   "articles_url": "https://raw.githubusercontent.com/Alex140219899/VIGMENU/main/VigArticles.json"
 
